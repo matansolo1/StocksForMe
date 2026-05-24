@@ -1,0 +1,26 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache and Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# VS Code Settings
+.vscode/
+
+# Live Data / Database Files
+trades_db.json
+trades_db.json.bak
+
+# Local/Temporary HTML Dashboards (generated dynamically)
+tracker_dashboard.html
+
+# Media / Recordings
+*.mp4

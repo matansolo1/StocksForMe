@@ -1,0 +1,62 @@
+{
+    "portfolio_metadata": {
+        "total_deposits": 4000.0,
+        "last_updated": "2026-05-23 19:42:26"
+    },
+    "trades": [
+        {
+            "ticker": "LULU",
+            "entry_price": 119.13999938964844,
+            "take_profit": 137.50349884033204,
+            "stop_loss": 111.22818823649652,
+            "risk_reward": 2.3210234793543996,
+            "rsi": 12.45272846654133,
+            "status": "CLOSED_BY_SCANNER",
+            "timestamp": "2026-05-16 15:19:07",
+            "current_price": 127.18000030517578,
+            "pnl_pct": 6.748364073120773,
+            "weight_pct": 33.33,
+            "exit_price": 127.18000030517578,
+            "exit_timestamp": "2026-05-23 00:05:46"
+        },
+        {
+            "ticker": "NIO",
+            "entry_price": 5.199999809265137,
+            "take_profit": 5.995999979972839,
+            "stop_loss": 4.8331075596653,
+            "risk_reward": 2.169574777270129,
+            "rsi": 30.836996261974747,
+            "status": "ACTIVE",
+            "timestamp": "2026-05-23 00:05:46",
+            "weight_pct": 33.33,
+            "current_price": 5.199999809265137,
+            "pnl_pct": 0.0
+        },
+        {
+            "ticker": "SQM",
+            "entry_price": 80.18000030517578,
+            "take_profit": 88.04171409606934,
+            "stop_loss": 76.27859692970833,
+            "risk_reward": 2.015098936021092,
+            "rsi": 34.52345945194429,
+            "status": "ACTIVE",
+            "timestamp": "2026-05-23 00:05:46",
+            "weight_pct": 33.33,
+            "current_price": 80.18000030517578,
+            "pnl_pct": 0.0
+        },
+        {
+            "ticker": "LI",
+            "entry_price": 15.890000343322754,
+            "take_profit": 17.720500230789185,
+            "stop_loss": 14.818671635431238,
+            "risk_reward": 1.7086258157583043,
+            "rsi": 36.044893035357234,
+            "status": "ACTIVE",
+            "timestamp": "2026-05-23 00:05:46",
+            "weight_pct": 33.33,
+            "current_price": 15.890000343322754,
+            "pnl_pct": 0.0
+        }
+    ]
+}

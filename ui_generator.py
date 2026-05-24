@@ -1,0 +1,532 @@
+import json
+import os
+import stock_api
+import finance_utils
+import data_manager
+
+FILE_DESCRIPTIONS = {
+    "app.py": "השרת המרכזי (Flask) - מנהל את הראוטינג והממשק האינטרנטי.",
+    "ui_generator.py": "מחולל הממשק - אחראי על יצירת ה-HTML והגרפים של הדאשבורד.",
+    "scanner.py": "הסורק השבועי - מחפש הזדמנויות קנייה חדשות בשוק לפי אסטרטגיה.",
+    "tracker.py": "מנהל המעקב - מעדכן מחירים חיים ומחשב ביצועים של הפורטפוליו.",
+    "stock_api.py": "ממשק נתונים - מתקשר עם Yahoo Finance להבאת מידע פיננסי.",
+    "trading_logic.py": "לוגיקת המסחר - אחראי על קבלת החלטות (קנייה, מכירה, החלפה).",
+    "data_manager.py": "ניהול נתונים - אחראי על קריאה וכתיבה לקבצי JSON (DB).",
+    "finance_utils.py": "כלי עזר פיננסיים - חישובי RSI, P&L, MWR ומדדים נוספים.",
+    "trades_db.json": "מסד הנתונים - מכיל את כל היסטוריית הטריידים וההגדרות.",
+    "tracker_dashboard.html": "הדף הראשי - הקובץ הסופי שמוצג בדפדפן."
+}
+
+STRUCTURE_TEMPLATE = """<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <title>מפת ארכיטקטורה - Project Structure</title>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0d1117; --card-bg: #161b22; --border: #30363d; --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff; --py-icon: #3776ab; --json-icon: #f1e05a; --stage1: #1f6feb; --stage2: #238636; --stage3: #9e6a03; --stage4: #da3633; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Assistant', sans-serif; margin: 0; padding: 40px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 900px; }
+        h1 { font-size: 2rem; margin-bottom: 10px; color: var(--accent); text-align: center; }
+        p.subtitle { text-align: center; color: var(--text-dim); margin-bottom: 40px; }
+        .tree-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
+        
+        .tree-node { margin-right: 40px; border-right: 2px solid #30363d; padding-right: 20px; position: relative; }
+        .tree-node::before { content: ""; position: absolute; top: 0; right: -2px; width: 20px; height: 2px; background: #30363d; }
+        
+        .tree-item { display: flex; align-items: center; padding: 12px 15px; margin: 8px 0; background: #0d1117; border: 1px solid var(--border); border-radius: 8px; transition: 0.2s; position: relative; }
+        .tree-item:hover { border-color: var(--accent); box-shadow: 0 0 10px rgba(88, 166, 255, 0.1); }
+        
+        .icon { font-size: 1.1rem; margin-left: 12px; }
+        .name { font-family: 'Fira Code', monospace; font-weight: 600; color: var(--accent); margin-left: 15px; min-width: 140px; }
+        .description { color: var(--text-dim); font-size: 0.9rem; flex-grow: 1; }
+        
+        .level-0 { margin-right: 0; border-right: none; }
+        .level-1 { margin-right: 40px; }
+        .level-2 { margin-right: 80px; }
+        
+        .connector { position: absolute; right: -25px; top: 50%; width: 25px; height: 2px; background: var(--border); }
+        .vertical-line { position: absolute; right: -25px; top: -10px; width: 2px; height: calc(100% + 20px); background: var(--border); }
+
+        .back-link { margin-top: 30px; text-decoration: none; color: var(--text-dim); font-size: 0.9rem; transition: 0.3s; }
+        .back-link:hover { color: var(--accent); }
+
+        /* Funnel Styles */
+        .funnel-container { margin-top: 50px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .funnel-stage { display: flex; align-items: center; width: 100%; gap: 30px; }
+        .funnel-shape { height: 60px; position: relative; transition: 0.3s; }
+        .stage-1 .funnel-shape { width: 300px; background: var(--stage1); clip-path: polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%); }
+        .stage-2 .funnel-shape { width: 240px; background: var(--stage2); clip-path: polygon(0% 0%, 100% 0%, 80% 100%, 20% 100%); margin-right: 30px; }
+        .stage-3 .funnel-shape { width: 200px; background: #6f42c1; clip-path: polygon(0% 0%, 100% 0%, 77% 100%, 23% 100%); margin-right: 50px; }
+        .stage-4 .funnel-shape { width: 160px; background: var(--stage3); clip-path: polygon(0% 0%, 100% 0%, 75% 100%, 25% 100%); margin-right: 70px; }
+        .stage-5 .funnel-shape { width: 120px; background: var(--stage4); clip-path: polygon(0% 0%, 100% 0%, 50% 100%, 50% 100%); margin-right: 90px; height: 80px; }
+        .funnel-content { flex: 1; background: var(--card-bg); border: 1px solid var(--border); padding: 15px 25px; border-radius: 12px; }
+        .funnel-content h3 { margin: 0 0 5px 0; color: var(--accent); font-size: 1.1rem; }
+        .funnel-content p { margin: 2px 0; font-size: 0.9rem; color: var(--text-dim); }
+        .funnel-content code { background: #000; padding: 2px 5px; border-radius: 4px; color: #e2e2e2; }
+
+        .strategy-doc { margin-top: 60px; width: 100%; padding: 30px; background: #111; border-radius: 16px; border: 1px solid var(--border); }
+        .doc-card { background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333; }
+        .doc-card h4 { margin-top: 0; color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .doc-card ul { padding-right: 20px; margin-bottom: 0; }
+        .doc-card li { margin-bottom: 8px; font-size: 0.9rem; color: var(--text-dim); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>מפת המערכת</h1>
+        <p class="subtitle">ארכיטקטורה והיררכיית קבצים - Stocks For Me</p>
+        
+        <div class="tree-container">
+            {{tree_content}}
+        </div>
+
+        <h2 style="margin-top: 80px; text-align: center; color: var(--accent);">משפך האסטרטגיה (Strategy Funnel)</h2>
+        <p class="subtitle">כיצד האלגוריתם מזקק את השוק ל-3 הזדמנויות זהב</p>
+        
+        {{funnel_content}}
+
+        <a href="/" class="back-link">→ חזרה לדאשבורד</a>
+    </div>
+</body>
+</html>"""
+
+def generate_structure_html():
+    """
+    Generates a Functional Dependency Tree HTML view.
+    """
+    def create_item(file, level=0):
+        icon = "📄"
+        if file.endswith('.py'): icon = "🐍"
+        elif file.endswith('.json'): icon = "⚙️"
+        elif file.endswith('.html'): icon = "🌐"
+        
+        desc = FILE_DESCRIPTIONS.get(file, "קובץ במערכת")
+        indent = f"margin-right: {level * 40}px;"
+        
+        connector = ""
+        if level > 0:
+            connector = '<div class="connector"></div>'
+
+        return f"""
+        <div class="tree-item" style="{indent}">
+            {connector}
+            <span class="icon">{icon}</span>
+            <span class="name">{file}</span>
+            <span class="description">{desc}</span>
+        </div>"""
+
+    # Functional Tree Structure
+    tree_html = ""
+    
+    # Level 0: App
+    tree_html += create_item("app.py", 0)
+    
+    # Level 1: Main Modules
+    tree_html += create_item("scanner.py", 1)
+    # Level 2 under Scanner
+    tree_html += create_item("stock_api.py", 2)
+    tree_html += create_item("finance_utils.py", 2)
+    tree_html += create_item("trading_logic.py", 2)
+    tree_html += create_item("data_manager.py", 2)
+    
+    tree_html += create_item("tracker.py", 1)
+    # Level 2 under Tracker
+    tree_html += create_item("stock_api.py", 2)
+    tree_html += create_item("ui_generator.py", 2)
+    
+    tree_html += create_item("ui_generator.py", 1)
+    # Level 2 under UI
+    tree_html += create_item("tracker_dashboard.html", 2)
+
+    # Level 1: Databases
+    tree_html += create_item("trades_db.json", 1)
+
+    return STRUCTURE_TEMPLATE.replace("{{tree_content}}", tree_html).replace("{{funnel_content}}", FUNNEL_TEMPLATE)
+
+FUNNEL_TEMPLATE = """
+<div class="funnel-container">
+    <div class="funnel-stage stage-1">
+        <div class="funnel-shape"></div>
+        <div class="funnel-content">
+            <h3>שלב 1: סינון ראשוני (Market Universe)</h3>
+            <p><strong>הלוגיקה:</strong> התמקדות במניות צמיחה וטכנולוגיה מובילות (Nasdaq-100 & High Growth).</p>
+            <p><strong>המתמטיקה:</strong> רשימה נבחרת של ~100 מניות עם נזילות גבוהה ושווי שוק משמעותי שמנפה 98% מהשוק.</p>
+        </div>
+    </div>
+    <div class="funnel-stage stage-2">
+        <div class="funnel-shape"></div>
+        <div class="funnel-content">
+            <h3>שלב 2: הלב הטכני (RSI Filter)</h3>
+            <p><strong>הלוגיקה:</strong> איתור מניות במצב "מכירת יתר" (Oversold) לטווח קצר בתוך מגמה ארוכה.</p>
+            <p><strong>המתמטיקה:</strong> <code>RSI(14) < 43</code> וגם <code>Price < SMA(20)</code>. תנאי זה מסנן את רוב המניות ומשאיר רק את אלו שחוו תיקון.</p>
+        </div>
+    </div>
+    <div class="funnel-stage stage-3">
+        <div class="funnel-shape"></div>
+        <div class="funnel-content">
+            <h3>שלב 3: הגנת דוחות (Earnings Filter)</h3>
+            <p><strong>הלוגיקה:</strong> מניעת סיכון "Gap Risk" הנובע מפרסומים כספיים קרובים.</p>
+            <p><strong>המתמטיקה:</strong> בדיקה מול <code>yfinance</code>. אם יש דוח ב-7 הימים הקרובים, המניה נפסלת אוטומטית ללא קשר לאיתות הטכני.</p>
+        </div>
+    </div>
+    <div class="funnel-stage stage-4">
+        <div class="funnel-shape"></div>
+        <div class="funnel-content">
+            <h3>שלב 4: מנוע הדירוג (Scoring Engine)</h3>
+            <p><strong>הלוגיקה:</strong> בחירת 3 המניות עם פוטנציאל ההתאוששות הגבוה ביותר ביחס לתנודתיות.</p>
+            <p><strong>המתמטיקה:</strong> <code>RankScore = (SMA20 - Close) / Volatility</code>. אנחנו מדרגים לפי המרחק מהממוצע חלקי סטיית התקן (Z-Score) ובוחרים את ה-TOP 3.</p>
+        </div>
+    </div>
+    <div class="funnel-stage stage-5">
+        <div class="funnel-shape"></div>
+        <div class="funnel-content">
+            <h3>שלב 5: ניהול סיכונים (Execution)</h3>
+            <p><strong>הלוגיקה:</strong> הגנה על ההון והצבת יעדים ריאליים מבוססי תנודתיות.</p>
+            <p><strong>המתמטיקה:</strong> 
+                <code>TP = SMA(20)</code> (חזרה לממוצע), 
+                <code>SL = Price - (2 * Volatility * Price)</code> (שימוש ב-2 סטיות תקן כמרחק הגנה).
+            </p>
+        </div>
+    </div>
+</div>
+
+<div class="strategy-doc">
+    <h2>ספר הדרכה: אסטרטגיית "Mean Reversion" מבוססת תנודתיות</h2>
+    <p>המערכת פועלת על פי עקרון החזרה לממוצע (Mean Reversion). היא מחפשת מניות חזקות שנמצאות בתיקון זמני.</p>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+        <div class="doc-card">
+            <h4>🛡️ מנגנוני הגנה</h4>
+            <ul>
+                <li><strong>תוקף טרייד:</strong> מניה שלא הגיעה ליעד תוך 5 ימי מסחר נכנסת ל-REVIEW להחלפה אפשרית.</li>
+                <li><strong>ניהול סיכונים:</strong> חשיפה של מקסימום 33% מהפורטפוליו לכל פוזיציה.</li>
+                <li><strong>יציאה דינמית:</strong> ה-SL מחושב לפי התנודתיות (Volatility) הספציפית של המניה ב-20 הימים האחרונים.</li>
+            </ul>
+        </div>
+        <div class="doc-card">
+            <h4>📈 חוקי יציאה</h4>
+            <ul>
+                <li><strong>HIT_TP:</strong> יציאה אוטומטית כשהמחיר נוגע בממוצע נע 20.</li>
+                <li><strong>HIT_SL:</strong> יציאה להגנה מהפסד בפריצה כלפי מטה של 2 סטיות תקן.</li>
+                <li><strong>SWAP:</strong> החלפת פוזיציה ב-REVIEW אם נמצאה מניה עם דירוג (RankScore) גבוה יותר.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+"""
+
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Portfolio Tracker Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        :root { --bg: #0a0a0a; --card-bg: #141414; --border: #262626; --text: #ffffff; --text-dim: #a0a0a0; --neon-green: #39FF14; --accent: #ff5252; --warning: #f39c12; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .nav-header { width: 100%; max-width: 1200px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .market-status { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 600; color: var(--text-dim); }
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 1200px; margin-bottom: 30px; }
+        .metric-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 25px; text-align: center; }
+        .metric-label { color: var(--text-dim); font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; }
+        .metric-value { font-size: 2.5rem; font-weight: 800; }
+        .main-content { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%; max-width: 1200px; }
+        .table-section, .chart-section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; color: var(--text-dim); padding: 12px; border-bottom: 1px solid var(--border); }
+        td { padding: 12px; border-bottom: 1px solid var(--border); }
+        .stock-row { cursor: pointer; transition: background 0.2s; }
+        .stock-row:hover { background: #1f1f1f; }
+        .led-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+        .led-green { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); animation: pulse 2s infinite; }
+        .led-orange { background: var(--warning); box-shadow: 0 0 10px var(--warning); animation: pulse 1.5s infinite; }
+        .led-red { background: #b33939; box-shadow: 0 0 5px #b33939; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        #chart-container { min-height: 400px; margin-bottom: 20px; }
+        #tv-container { height: 400px; }
+        .explanation-section { margin-top: 50px; padding: 30px; background: #111; border-radius: 16px; border: 1px solid #262626; width: 100%; max-width: 1200px; box-sizing: border-box; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; border: none; transition: 0.3s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-secondary { background: transparent; color: white; border: 1px solid var(--border); }
+        #reset-btn { margin-top: 50px; padding: 10px 20px; background: #1a1a1a; border: 1px solid #333; color: #777; cursor: pointer; border-radius: 8px; font-size: 0.8rem; transition: 0.3s; }
+        #reset-btn:hover { background: #ff5252; color: white; border-color: #ff5252; }
+        
+        /* New Styles for Metrics Dashboard */
+        .ticker-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .t-metric { background: #1c1c1c; padding: 15px; border-radius: 12px; border: 1px solid #333; }
+        .t-label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 5px; }
+        .t-value { font-size: 1.25rem; font-weight: 800; }
+        .t-sub { font-size: 0.8rem; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="nav-header">
+        <div class="market-status">
+            <div id="market-led" class="led-dot"></div>
+            <span id="market-label">Checking Market...</span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <a href="/structure" class="btn btn-secondary" style="border-color: var(--accent); color: var(--accent);">Architecture Map</a>
+            <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
+            <a href="/refresh-tracker" class="btn btn-secondary">Refresh Prices</a>
+        </div>
+    </div>
+    <div class="header" style="max-width: 1200px; width: 100%; justify-content: center;">
+        <h1 style="margin: 0;">Portfolio Tracker Pro</h1>
+    </div>
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">TOTAL PORTFOLIO RETURN (MWR)</div>
+            <div class="metric-value" style="color: {{port_color}};">{{portfolio_pnl}}</div>
+            <div style="color: var(--text-dim);">Based on ${{total_deposits}} Total Deposits</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">OPEN TRADE P&L (USD)</div>
+            <div class="metric-value" style="color: {{realized_color}};">{{total_realized_usd}}</div>
+            <div style="color: {{realized_color}};">Unrealized P&L from active positions</div>
+        </div>
+    </div>
+    <div class="main-content">
+        <div class="table-section">
+            <h3>Active Positions</h3>
+            <table>
+                <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>P&L</th></tr></thead>
+                <tbody>{{active_rows}}</tbody>
+            </table>
+        </div>
+        <div class="chart-section">
+            <!-- New Metrics Dashboard -->
+            <div id="ticker-dashboard" class="ticker-metrics">
+                <div class="t-metric">
+                    <div class="t-label">Target Entry</div>
+                    <div id="m-entry" class="t-value">--</div>
+                </div>
+                <div class="t-metric">
+                    <div class="t-label">Take Profit</div>
+                    <div id="m-tp" class="t-value" style="color: var(--neon-green);">--</div>
+                    <div id="m-tp-pct" class="t-sub" style="color: var(--neon-green);">--</div>
+                </div>
+                <div class="t-metric">
+                    <div class="t-label">Stop Loss</div>
+                    <div id="m-sl" class="t-value" style="color: var(--accent);">--</div>
+                    <div id="m-sl-pct" class="t-sub" style="color: var(--accent);">--</div>
+                </div>
+            </div>
+            <div id="chart-container"></div>
+            <div id="tv-container"></div>
+        </div>
+    </div>
+    <div class="explanation-section">
+        <h2 style="color: var(--neon-green); margin-top: 0;">System Guide & Strategy</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+            <div>
+                <h3 style="color: white;">Trading Rules</h3>
+                <ul style="color: var(--text-dim); line-height: 1.6;">
+                    <li><strong>Max Positions:</strong> Up to 3 stocks active at once.</li>
+                    <li><strong>Weighting:</strong> Dynamic based on Portfolio Value (~33.3%).</li>
+                    <li><strong>Holding Period:</strong> 5 trading days. After this, the stock enters <strong>REVIEW</strong> status.</li>
+                    <li><strong>Exit Conditions:</strong> Automatic exit at <strong>Take Profit</strong> (SMA 20) or <strong>Stop Loss</strong> (2x Volatility).</li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="color: white;">Weekly Swap Logic</h3>
+                <p style="color: var(--text-dim); line-height: 1.6;">Every weekend, the scanner identifies new setups. If a stock is in <strong>REVIEW</strong>:<br>1. If a <strong>better setup</strong> is found, the current stock is closed and swapped.<br>2. If <strong>no better setup</strong> is found, it's kept for one more week.</p>
+            </div>
+        </div>
+    </div>
+    <div style="width: 100%; max-width: 1200px; margin-top: 30px;">
+        <h3>Historical Log</h3>
+        <table style="background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border);">
+            <thead><tr><th style="padding-left:20px;">Date</th><th>Ticker</th><th>Status</th><th>Entry</th><th>Exit</th><th style="padding-right:20px;">P&L</th></tr></thead>
+            <tbody>{{history_rows}}</tbody>
+        </table>
+    </div>
+    <button id="reset-btn" onclick="resetSystem()">Reset & Start Live Trading</button>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script>
+        const stockData = {{charts_json}};
+        
+        function displayTickerData(ticker) {
+            const data = stockData[ticker];
+            if (!data) {
+                document.getElementById('chart-container').innerHTML = "Chart not available";
+                return;
+            }
+
+            // Update Metrics Dashboard
+            document.getElementById('m-entry').innerText = '$' + data.entry.toFixed(2);
+            document.getElementById('m-tp').innerText = '$' + data.tp.toFixed(2);
+            document.getElementById('m-sl').innerText = '$' + data.sl.toFixed(2);
+            
+            const tpPct = ((data.tp - data.entry) / data.entry * 100).toFixed(1);
+            const slPct = ((data.sl - data.entry) / data.entry * 100).toFixed(1);
+            document.getElementById('m-tp-pct').innerText = '+' + tpPct + '%';
+            document.getElementById('m-sl-pct').innerText = slPct + '%';
+
+            // 1. Render Plotly Chart
+            const trace = {
+                x: data.x,
+                y: data.y,
+                type: 'scatter',
+                mode: 'lines',
+                line: { color: '#2196F3', width: 2 },
+                name: 'Price'
+            };
+            const layout = {
+                title: ticker + ' - 60 Day History',
+                template: 'plotly_dark',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 40, r: 60, t: 40, b: 40 },
+                shapes: [
+                    { type: 'line', y0: data.entry, y1: data.entry, x0: data.x[0], x1: data.x[data.x.length-1], line: { color: 'yellow', dash: 'dash', width: 3 } },
+                    { type: 'line', y0: data.tp, y1: data.tp, x0: data.x[0], x1: data.x[data.x.length-1], line: { color: '#39FF14', dash: 'dash', width: 3 } },
+                    { type: 'line', y0: data.sl, y1: data.sl, x0: data.x[0], x1: data.x[data.x.length-1], line: { color: '#ff5252', dash: 'dash', width: 3 } }
+                ],
+                annotations: [
+                    { x: data.x[data.x.length-1], y: data.entry, text: 'Entry', showarrow: false, xanchor: 'left', font: { color: 'yellow' } },
+                    { x: data.x[data.x.length-1], y: data.tp, text: 'TP', showarrow: false, xanchor: 'left', font: { color: '#39FF14' } },
+                    { x: data.x[data.x.length-1], y: data.sl, text: 'SL', showarrow: false, xanchor: 'left', font: { color: '#ff5252' } }
+                ]
+            };
+            Plotly.newPlot('chart-container', [trace], layout);
+
+            // 2. Load TradingView Widget
+            new TradingView.widget({ "autosize": true, "symbol": ticker, "interval": "5", "theme": "dark", "container_id": "tv-container" });
+        }
+
+        async function checkMarket() {
+            try {
+                const response = await fetch('/api/market-status');
+                const data = await response.json();
+                document.getElementById('market-led').className = data.status === 'open' ? 'led-dot led-green' : 'led-dot led-red';
+                document.getElementById('market-label').innerText = data.message;
+            } catch (e) {}
+        }
+        
+        function resetSystem() {
+            if (confirm('CRITICAL: This will archive current data and start a fresh LIVE portfolio. Continue?')) {
+                window.location.href = '/reset-to-live';
+            }
+        }
+        
+        checkMarket();
+        setInterval(checkMarket, 60000);
+        const firstRow = document.querySelector('.stock-row');
+        if (firstRow) firstRow.click();
+    </script>
+</body>
+</html>"""
+
+def get_charts_data(active_trades):
+    """
+    Fetches historical data for active trades to be displayed on charts.
+    """
+    charts_data = {}
+    for t in active_trades:
+        ticker = t['ticker']
+        df = stock_api.get_historical_data(ticker, days=60)
+        if df is not None:
+            charts_data[ticker] = {
+                "x": df.index.strftime("%Y-%m-%d").tolist(),
+                "y": df['Close'].tolist(),
+                "entry": t['entry_price'],
+                "tp": t['take_profit'],
+                "sl": t['stop_loss']
+            }
+    return charts_data
+
+def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
+    """
+    Generates the final HTML dashboard.
+    """
+    active_trades = [t for t in trades if t.get("status") in ["ACTIVE", "REVIEW"]]
+    historical_trades = [t for t in trades if t.get("status") not in ["ACTIVE", "REVIEW"]]
+    
+    metadata = data_manager.get_metadata()
+    total_deposits = metadata.get("total_deposits", 0)
+
+    # Metrics
+    current_equity = total_deposits
+    total_realized_usd = 0
+    total_realized_pct = 0
+    
+    # Calculate current equity
+    # Equity = Deposits + Realized P&L + Unrealized P&L
+    
+    # Unrealized
+    for t in active_trades:
+        entry = t.get("entry_price", 1)
+        current = t.get("current_price", entry)
+        qty = t.get("quantity", 1000.0 / entry)
+        total_realized_usd += (current - entry) * qty # This is unrealized actually
+        # Wait, let's separate them properly
+    
+    unrealized_usd = 0
+    for t in active_trades:
+        entry = t.get("entry_price", 1)
+        current = t.get("current_price", entry)
+        qty = t.get("quantity", 1000.0 / entry)
+        unrealized_usd += (current - entry) * qty
+
+    realized_usd = 0
+    for t in historical_trades:
+        entry = t.get("entry_price", 1)
+        exit_p = t.get("exit_price", entry)
+        qty = t.get("quantity", 1000.0 / entry)
+        realized_usd += (exit_p - entry) * qty
+        total_realized_pct += finance_utils.calculate_pnl_pct(exit_p, entry)
+
+    current_equity = total_deposits + realized_usd + unrealized_usd
+    portfolio_mwr = finance_utils.calculate_mwr(total_deposits, current_equity)
+
+    # Table rows
+    active_rows = ""
+    for t in active_trades:
+        pnl = t.get("pnl_pct", 0)
+        color = "#39FF14" if pnl >= 0 else "#ff5252"
+        led = "led-green" if t["status"] == "ACTIVE" else "led-orange"
+        active_rows += f"""<tr class="stock-row" onclick="displayTickerData('{t['ticker']}')">
+            <td><div class="led-dot {led}"></div></td>
+            <td><strong>{t['ticker']}</strong></td>
+            <td>{t['status']}</td>
+            <td>{t.get('weight_pct', 33.33)}%</td>
+            <td>${t['entry_price']:.2f}</td>
+            <td>${t.get('current_price', 0):.2f}</td>
+            <td style="color: {color}; font-weight: bold;">{pnl:+.2f}%</td>
+        </tr>"""
+
+    history_rows = ""
+    for t in reversed(historical_trades):
+        pnl = finance_utils.calculate_pnl_pct(t.get('exit_price', t['entry_price']), t['entry_price'])
+        color = "#39FF14" if pnl >= 0 else "#ff5252"
+        history_rows += f"""<tr>
+            <td>{t.get('exit_timestamp', t.get('timestamp', 'N/A'))}</td>
+            <td><strong>{t.get('ticker', 'N/A')}</strong></td>
+            <td>{t.get('status', 'N/A')}</td>
+            <td>${t['entry_price']:.2f}</td>
+            <td>${t.get('exit_price', 0):.2f}</td>
+            <td style="color: {color}; font-weight: bold;">{pnl:+.2f}%</td>
+        </tr>"""
+
+    # Final HTML assembly
+    port_color = "#39FF14" if portfolio_mwr >= 0 else "#ff5252"
+    # Show unrealized P&L in the second card as requested
+    unrealized_color = "#39FF14" if unrealized_usd >= 0 else "#ff5252"
+    
+    charts_json = json.dumps(get_charts_data(active_trades))
+    
+    html = HTML_TEMPLATE.replace("{{port_color}}", port_color)\
+                       .replace("{{portfolio_pnl}}", f"{portfolio_mwr:+.2f}%")\
+                       .replace("{{total_deposits}}", f"{total_deposits:,.2f}")\
+                       .replace("{{realized_color}}", unrealized_color)\
+                       .replace("{{total_realized_usd}}", f"${unrealized_usd:+.2f}")\
+                       .replace("{{total_realized_pct}}", f"{total_realized_pct:+.2f}%")\
+                       .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
+                       .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
+                       .replace("{{charts_json}}", charts_json)
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html)
