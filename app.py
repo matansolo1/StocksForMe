@@ -59,8 +59,159 @@ def execute_scan():
         new_total = metadata.get('total_deposits', 0) + deposit
         data_manager.update_metadata(total_deposits=new_total)
     
-    subprocess.run(["python", "scanner.py"], env={**os.environ, "FLASK_TRIGGERED": "true"})
-    return redirect(url_for('index'))
+    # Instead of running scanner.py as a subprocess and blocking, we render a scanning page
+    # that connects to the SSE stream.
+    return render_template_string(SCANNING_HTML)
+
+SCANNING_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Weekly Scan - Progress</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #ffffff; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl bg-[#141414] border border-[#262626] rounded-2xl p-8 shadow-2xl">
+        <h2 class="text-2xl font-extrabold mb-2 text-center text-white">Weekly Market Scan</h2>
+        <p class="text-gray-400 text-sm text-center mb-6">Scanning ~100 tickers for Mean Reversion setups...</p>
+        
+        <!-- Progress Bar -->
+        <div class="mb-6">
+            <div class="flex justify-between text-sm font-semibold mb-2">
+                <span id="status-text" class="text-gray-300">Initializing...</span>
+                <span id="progress-text" class="text-[#ff5252]">0%</span>
+            </div>
+            <div class="w-full bg-[#1a1a1a] rounded-full h-4 border border-[#333]">
+                <div id="progress-bar" class="bg-gradient-to-r from-[#ff5252] to-[#ff7b7b] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Live Activity Log -->
+        <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wider">Live Activity Log</h3>
+            <div id="activity-log" class="w-full h-64 bg-black border border-[#262626] rounded-xl p-4 font-mono text-xs overflow-y-auto text-green-400 flex flex-col gap-1">
+                <div class="text-gray-500">[System] Ready to start stream...</div>
+            </div>
+        </div>
+
+        <div class="flex justify-center">
+            <button id="done-btn" class="bg-[#ff5252] hover:bg-[#ff7b7b] text-white font-bold py-3 px-8 rounded-xl transition duration-300 opacity-50 cursor-not-allowed" disabled onclick="window.location.href='/'">
+                Waiting for completion...
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const logBox = document.getElementById('activity-log');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const statusText = document.getElementById('status-text');
+        const doneBtn = document.getElementById('done-btn');
+
+        function appendLog(message, type = 'info') {
+            const div = document.createElement('div');
+            let colorClass = 'text-green-400';
+            if (message.includes('Failed') || message.includes('Error')) {
+                colorClass = 'text-red-400';
+            } else if (message.includes('Skipped') || message.includes('Skipping')) {
+                colorClass = 'text-yellow-500';
+            } else if (message.includes('Found setup')) {
+                colorClass = 'text-cyan-400 font-bold';
+            } else if (message.includes('[System]')) {
+                colorClass = 'text-gray-500';
+            }
+            div.className = colorClass;
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        const eventSource = new EventSource('/api/scan-stream');
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.progress !== undefined) {
+                const pct = Math.round(data.progress);
+                progressBar.style.width = pct + '%';
+                progressText.innerText = pct + '%';
+            }
+
+            if (data.message) {
+                appendLog(data.message);
+                statusText.innerText = data.message;
+            }
+
+            if (data.complete) {
+                appendLog('[System] Scan completed successfully!', 'system');
+                statusText.innerText = 'Scan Complete!';
+                doneBtn.innerText = 'View Dashboard';
+                doneBtn.className = 'bg-green-500 hover:bg-green-400 text-white font-bold py-3 px-8 rounded-xl transition duration-300 cursor-pointer';
+                doneBtn.disabled = false;
+                eventSource.close();
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            appendLog('Error: Connection to scan stream lost.', 'error');
+            statusText.innerText = 'Connection Error';
+            eventSource.close();
+        };
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/api/scan-stream')
+def scan_stream():
+    import json
+    from flask import Response
+    import scanner
+    import trading_logic
+    import data_manager
+    
+    def generate():
+        db = data_manager.load_db()
+        trades = db["trades"]
+        metadata = db["portfolio_metadata"]
+        
+        total_deposits = metadata.get("total_deposits", 0)
+        if total_deposits <= 0:
+            pos_size = 0
+        else:
+            pos_size = total_deposits / 3.0
+            
+        top_setups = []
+        
+        # Stream the scan progress
+        for event in scanner.scan_universe_generator():
+            if "top_setups" in event:
+                top_setups = event["top_setups"]
+            yield f"data: {json.dumps(event)}\n\n"
+            
+        # Once scan is complete, process swaps and new trades
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Processing swaps and new trades...'})}\n\n"
+        
+        trades = trading_logic.process_scanner_swaps(trades, top_setups, position_size_usd=pos_size)
+        trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
+        data_manager.save_trades(trades)
+        
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Triggering tracker update...'})}\n\n"
+        
+        # Run tracker update to generate the new dashboard
+        import tracker
+        trades = data_manager.load_trades()
+        updated_trades = trading_logic.update_portfolio_status(trades)
+        data_manager.save_trades(updated_trades)
+        ui_generator.generate_dashboard_file(updated_trades)
+        
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Dashboard updated!', 'complete': True})}\n\n"
+        
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/refresh-tracker')
 def refresh_tracker():

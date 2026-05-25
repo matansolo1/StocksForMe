@@ -21,17 +21,26 @@ UNIVERSE = [
     'XPEV', 'LI', 'NIO', 'FCX', 'NUE', 'CLF', 'AA', 'X', 'SOFI', 'UPST'
 ]
 
-def scan_universe():
+def scan_universe_generator():
     """
-    Scans the defined universe for trading setups based on RSI and SMA.
-    Returns: list of top 3 setups.
+    Generator that scans the defined universe for trading setups.
+    Yields: dict with progress and message, and finally the top setups.
     """
     results = []
-    print(f"Scanning {len(UNIVERSE)} tickers...")
+    total = len(UNIVERSE)
     
-    for ticker in UNIVERSE:
-        df = stock_api.get_historical_data(ticker, days=180)
-        if df is None or len(df) < 20:
+    yield {"progress": 0, "message": f"Starting scan of {total} tickers..."}
+    
+    for index, ticker in enumerate(UNIVERSE):
+        progress = (index + 1) / total * 100
+        
+        try:
+            df = stock_api.get_historical_data(ticker, days=180)
+            if df is None or len(df) < 20:
+                yield {"progress": progress, "message": f"Failed to download {ticker}: Rate Limited"}
+                continue
+        except Exception as e:
+            yield {"progress": progress, "message": f"Failed to download {ticker}: {str(e)}"}
             continue
             
         # Technical Indicators
@@ -59,7 +68,10 @@ def scan_universe():
                 
                 days_to_earnings = (next_earnings - datetime.now()).days
                 if 0 <= days_to_earnings <= 7:
-                    print(f"Skipping {ticker} due to earnings in {days_to_earnings} days ({next_earnings.date()})")
+                    if 0 <= days_to_earnings <= 2:
+                        yield {"progress": progress, "message": f"Skipped {ticker}: Upcoming earnings"}
+                    else:
+                        yield {"progress": progress, "message": f"Skipping {ticker} due to earnings in {days_to_earnings} days"}
                     continue
 
             tp = current_sma
@@ -68,6 +80,7 @@ def scan_universe():
             
             # Risk/Reward Filter
             if rr < 1.0:
+                yield {"progress": progress, "message": f"Analyzed {ticker}: Risk/Reward {rr:.2f} < 1.0 (Skipped)"}
                 continue
             
             dist_pct = (current_sma - current_close) / current_close
@@ -83,12 +96,26 @@ def scan_universe():
                 'RiskReward': rr,
                 'StopLoss': sl
             })
+            yield {"progress": progress, "message": f"Found setup for {ticker}! RSI: {current_rsi:.1f}, R/R: {rr:.2f}"}
+        else:
+            yield {"progress": progress, "message": f"Analyzed {ticker}: No setup"}
             
-    if not results:
-        return []
-        
     results.sort(key=lambda x: x['RankScore'], reverse=True)
-    return results[:3]
+    top_setups = results[:3]
+    
+    yield {"progress": 100, "message": f"Scan complete! Found {len(results)} setups. Top 3: {', '.join([x['Ticker'] for x in top_setups])}", "complete": True, "top_setups": top_setups}
+
+def scan_universe():
+    """
+    Scans the defined universe for trading setups based on RSI and SMA.
+    Returns: list of top 3 setups.
+    """
+    top_setups = []
+    for event in scan_universe_generator():
+        print(event["message"])
+        if "top_setups" in event:
+            top_setups = event["top_setups"]
+    return top_setups
 
 def main():
     """
