@@ -74,16 +74,37 @@ def reset_to_live():
 
 @app.route('/api/market-status')
 def market_status():
+    import pandas_market_calendars as mcal
     eastern = pytz.timezone('US/Eastern')
     now_eastern = datetime.now(eastern)
-    is_weekday = now_eastern.weekday() <= 4
-    market_open = eastern.localize(datetime.combine(now_eastern.date(), datetime.strptime("09:30", "%H:%M").time()))
-    market_close = eastern.localize(datetime.combine(now_eastern.date(), datetime.strptime("16:00", "%H:%M").time()))
-    is_open = is_weekday and (market_open <= now_eastern <= market_close)
+    today_str = now_eastern.strftime('%Y-%m-%d')
     
+    nyse = mcal.get_calendar('NYSE')
+    schedule = nyse.schedule(start_date=today_str, end_date=today_str)
+    
+    is_trading_day = not schedule.empty
+    is_open = False
+    message = "Market Closed (US)"
+    
+    if is_trading_day:
+        market_open = schedule.iloc[0]['market_open'].to_pydatetime()
+        market_close = schedule.iloc[0]['market_close'].to_pydatetime()
+        now_utc = datetime.now(pytz.utc)
+        is_open = market_open <= now_utc <= market_close
+        if is_open:
+            message = "Market Open (US)"
+        else:
+            message = "Market Closed (US)"
+    else:
+        is_weekday = now_eastern.weekday() <= 4
+        if is_weekday:
+            message = "Market Closed (US Holiday)"
+        else:
+            message = "Market Closed (Weekend)"
+            
     return jsonify({
         "status": "open" if is_open else "closed",
-        "message": "Market Open (US)" if is_open else "Market Closed (US)"
+        "message": message
     })
 
 @app.route('/structure')
