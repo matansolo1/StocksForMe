@@ -218,6 +218,35 @@ def refresh_tracker():
     subprocess.run(["python", "tracker.py"], env={**os.environ, "FLASK_TRIGGERED": "true"})
     return redirect(url_for('index'))
 
+@app.route('/manual-clearance', methods=['POST'])
+def manual_clearance():
+    import data_manager
+    import ui_generator
+    from datetime import datetime
+    
+    trades = data_manager.load_trades()
+    for t in trades:
+        if t.get("status") in ["ACTIVE", "REVIEW"]:
+            t["status"] = "CLOSED"
+            t["exit_price"] = t.get("current_price", t["entry_price"])
+            t["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+    data_manager.save_trades(trades)
+    ui_generator.generate_dashboard_file(trades)
+    return redirect(url_for('index'))
+
+@app.route('/api/dry-run-stream')
+def dry_run_stream():
+    import json
+    from flask import Response
+    import scanner
+    
+    def generate():
+        for event in scanner.scan_universe_generator():
+            yield f"data: {json.dumps(event)}\n\n"
+            
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/reset-to-live')
 def reset_to_live():
     subprocess.run(["python", "tracker.py", "--reset"], env={**os.environ, "FLASK_TRIGGERED": "true"})

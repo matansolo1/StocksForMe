@@ -267,7 +267,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="market-led" class="led-dot"></div>
             <span id="market-label">Checking Market...</span>
         </div>
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+            {{clearance_button}}
+            <button onclick="openDryRunModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; background: transparent;">Dry Run Scanner</button>
             <a href="/structure" class="btn btn-secondary" style="border-color: var(--accent); color: var(--accent);">Architecture Map</a>
             <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
             <a href="/refresh-tracker" class="btn btn-secondary">Refresh Prices</a>
@@ -416,7 +418,161 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         setInterval(checkMarket, 60000);
         const firstRow = document.querySelector('.stock-row');
         if (firstRow) firstRow.click();
+
+        // Dry Run Scanner Logic
+        let dryRunEventSource = null;
+
+        window.openDryRunModal = function() {
+            document.getElementById('dryRunModal').style.display = 'flex';
+            document.getElementById('dryRunProgressSection').style.display = 'block';
+            document.getElementById('dryRunResultsSection').style.display = 'none';
+            document.getElementById('dryRunProgressBar').style.width = '0%';
+            document.getElementById('dryRunProgressText').innerText = '0%';
+            document.getElementById('dryRunStatusText').innerText = 'Ready to start';
+            document.getElementById('dryRunLog').innerHTML = '<div style="color: #555;">[System] Ready to start dry run...</div>';
+            document.getElementById('dryRunStartBtn').disabled = false;
+            document.getElementById('dryRunStartBtn').style.opacity = '1';
+        };
+
+        window.closeDryRunModal = function() {
+            if (dryRunEventSource) {
+                dryRunEventSource.close();
+                dryRunEventSource = null;
+            }
+            document.getElementById('dryRunModal').style.display = 'none';
+        };
+
+        function appendDryRunLog(message) {
+            const logBox = document.getElementById('dryRunLog');
+            const div = document.createElement('div');
+            let colorStyle = 'color: #39FF14;';
+            if (message.includes('Failed') || message.includes('Error')) {
+                colorStyle = 'color: #ff5252;';
+            } else if (message.includes('Skipped') || message.includes('Skipping')) {
+                colorStyle = 'color: #e67e22;';
+            } else if (message.includes('Found setup')) {
+                colorStyle = 'color: #00ffff; font-weight: bold;';
+            } else if (message.includes('[System]')) {
+                colorStyle = 'color: #555;';
+            }
+            div.style = colorStyle;
+            div.innerText = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        window.startDryRun = function() {
+            document.getElementById('dryRunStartBtn').disabled = true;
+            document.getElementById('dryRunStartBtn').style.opacity = '0.5';
+            
+            appendDryRunLog('[System] Connecting to dry run stream...');
+            dryRunEventSource = new EventSource('/api/dry-run-stream');
+
+            dryRunEventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.progress !== undefined) {
+                    const pct = Math.round(data.progress);
+                    document.getElementById('dryRunProgressBar').style.width = pct + '%';
+                    document.getElementById('dryRunProgressText').innerText = pct + '%';
+                }
+
+                if (data.message) {
+                    appendDryRunLog(data.message);
+                    document.getElementById('dryRunStatusText').innerText = data.message;
+                }
+
+                if (data.complete) {
+                    appendDryRunLog('[System] Dry run completed successfully!');
+                    document.getElementById('dryRunStatusText').innerText = 'Scan Complete!';
+                    
+                    const tableBody = document.getElementById('dryRunResultsTableBody');
+                    tableBody.innerHTML = '';
+                    
+                    if (data.top_setups && data.top_setups.length > 0) {
+                        data.top_setups.forEach(s => {
+                            const tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid #262626';
+                            tr.innerHTML = `
+                                <td style="padding: 8px;"><strong>${s.Ticker}</strong></td>
+                                <td style="padding: 8px;">$${s.Close.toFixed(2)}</td>
+                                <td style="padding: 8px;">$${s.SMA_20.toFixed(2)}</td>
+                                <td style="padding: 8px; color: #00ffff;">${s.RSI_14.toFixed(1)}</td>
+                                <td style="padding: 8px; color: #39FF14;">${s.RiskReward.toFixed(2)}</td>
+                                <td style="padding: 8px; color: #ff5252;">$${s.StopLoss.toFixed(2)}</td>
+                            `;
+                            tableBody.appendChild(tr);
+                        });
+                    } else {
+                        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 15px; color: #aaa;">No setups found passing the strategy rules.</td></tr>';
+                    }
+
+                    document.getElementById('dryRunResultsSection').style.display = 'block';
+                    dryRunEventSource.close();
+                    dryRunEventSource = null;
+                }
+            };
+
+            dryRunEventSource.onerror = function(err) {
+                appendDryRunLog('[Error] Lost connection to dry run stream.');
+                document.getElementById('dryRunStatusText').innerText = 'Connection Error';
+                dryRunEventSource.close();
+                dryRunEventSource = null;
+                document.getElementById('dryRunStartBtn').disabled = false;
+                document.getElementById('dryRunStartBtn').style.opacity = '1';
+            };
+        };
     </script>
+
+    <!-- Dry Run Scanner Modal -->
+    <div id="dryRunModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 80%; max-width: 800px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <span onclick="closeDryRunModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #39FF14;">Dry Run Scanner</h2>
+            <p style="color: #a0a0a0; font-size: 0.9rem;">Runs the full scanning algorithm on live data. Results are NOT saved to the database.</p>
+            
+            <!-- Progress Section -->
+            <div id="dryRunProgressSection" style="margin: 20px 0;">
+                <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 5px; font-size: 0.85rem;">
+                    <span id="dryRunStatusText" style="color: #ccc;">Initializing...</span>
+                    <span id="dryRunProgressText" style="color: #39FF14;">0%</span>
+                </div>
+                <div style="width: 100%; background: #1a1a1a; height: 10px; border-radius: 5px; border: 1px solid #333; overflow: hidden;">
+                    <div id="dryRunProgressBar" style="width: 0%; height: 100%; background: linear-gradient(to right, #39FF14, #32cd32); transition: width 0.3s;"></div>
+                </div>
+                
+                <div id="dryRunLog" style="height: 200px; background: #000; color: #39FF14; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 8px; border: 1px solid #262626; overflow-y: auto; margin-top: 15px; display: flex; flex-direction: column; gap: 2px;">
+                    <div style="color: #555;">[System] Ready to start dry run...</div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="dryRunResultsSection" style="display: none; margin-top: 20px;">
+                <h3 style="color: white; border-bottom: 1px solid #262626; padding-bottom: 8px; margin-bottom: 15px;">Top Scan Results</h3>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid #262626;">
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Ticker</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Price</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">SMA 20</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">RSI</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Risk/Reward</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Stop Loss</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dryRunResultsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 25px; gap: 10px;">
+                <button id="dryRunStartBtn" onclick="startDryRun()" class="btn btn-primary" style="background: #39FF14; color: black; border: none;">Start Dry Run</button>
+                <button onclick="closeDryRunModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>"""
 
@@ -444,6 +600,27 @@ def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
     """
     active_trades = [t for t in trades if t.get("status") in ["ACTIVE", "REVIEW"]]
     historical_trades = [t for t in trades if t.get("status") not in ["ACTIVE", "REVIEW"]]
+    
+    show_clearance_btn = False
+    from datetime import datetime
+    for t in active_trades:
+        ts_str = t.get("timestamp")
+        if ts_str:
+            try:
+                entry_date = datetime.strptime(ts_str.split()[0], "%Y-%m-%d")
+                if (datetime.now() - entry_date).days < 7:
+                    show_clearance_btn = True
+                    break
+            except Exception:
+                pass
+
+    clearance_btn_html = ""
+    if show_clearance_btn:
+        clearance_btn_html = """
+        <form action="/manual-clearance" method="post" style="margin: 0; display: inline-block;">
+            <button type="submit" class="btn" style="background: #ff5252; color: white; border: none; cursor: pointer; padding: 10px 20px; border-radius: 8px; font-weight: 600;" onclick="return confirm('Are you sure you want to manually close all active positions?')">Manual Trade Clearance</button>
+        </form>
+        """
     
     metadata = data_manager.get_metadata()
     total_deposits = metadata.get("total_deposits", 0)
@@ -526,7 +703,8 @@ def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
                        .replace("{{total_realized_pct}}", f"{total_realized_pct:+.2f}%")\
                        .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
-                       .replace("{{charts_json}}", charts_json)
+                       .replace("{{charts_json}}", charts_json)\
+                       .replace("{{clearance_button}}", clearance_btn_html)
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)
