@@ -16,14 +16,21 @@ The project is a lightweight, local stock scanner and portfolio tracker built wi
         *   `/` (Dashboard): Renders the main dashboard UI.
         *   `/execute-scan` (GET): Renders the real-time scanning page with the progress bar and live activity log.
         *   `/api/scan-stream` (GET): Server-Sent Events (SSE) stream route that runs the scanner generator, streams real-time progress/logs, processes swaps, updates portfolio status, and regenerates the dashboard.
+        *   `/api/backtest` (POST): Runs the 5-year week-by-week backtester with the customized initial capital and returns statistics + equity curve JSON.
         *   `/add-trade` (POST): Adds a new manual trade to the tracker.
         *   `/close-trade` (POST): Closes an active trade.
         *   `/delete-trade` (POST): Deletes a trade from history.
         *   `/update-notes` (POST): Updates notes for an active trade.
 *   **`scanner.py`**:
     *   Contains the core scanning engine.
-    *   `scan_universe_generator()`: A generator function that iterates through the stock universe, fetches data, calculates technical indicators, checks for upcoming earnings, and yields real-time progress and status messages.
+    *   `scan_universe_generator()`: A generator function that iterates through the stock universe, fetches data, calculates technical indicators, checks for upcoming earnings, and yields real-time progress and status messages. Includes a global market trend filter of SPY above its SMA 200 and checks for optimized RSI < 35 criteria.
     *   `scan_universe()`: A backward-compatible wrapper that consumes the generator and prints messages to the console.
+*   **`backtester.py`**:
+    *   The core backtesting engine for week-by-week simulation over the last 5 years.
+    *   Implements single-batch download for the entire ~100 tickers + SPY for ultimate API token efficiency.
+    *   Caches downloaded data in `backtest_data_cache.pkl` to make subsequent runs instantaneous (taking <1 second) with zero API calls.
+    *   Simulates realistic daily/intraday Stop Loss (3x Volatility, 1.5x wider to reduce noise) and Take Profit (SMA 20) hit times day-by-day during each week, and falls back to Friday close if neither is hit.
+    *   Incorporates realistic transaction fees (0.05% per trade side) and compounds equity.
 *   **`stock_api.py`**:
     *   Handles interaction with the `yfinance` API.
     *   Fetches historical price data, ticker info, and upcoming earnings dates.
@@ -37,60 +44,34 @@ The project is a lightweight, local stock scanner and portfolio tracker built wi
 *   **`data_manager.py`**:
     *   Handles JSON-based data persistence for active trades, trade history, and cached scan results.
 *   **`ui_generator.py`**:
-    *   Generates the static HTML dashboard (`tracker_dashboard.html`) with Tailwind CSS, embedding active trades, trade history, and scanned setups.
+    *   Generates the static HTML dashboard (`tracker_dashboard.html`) with Tailwind CSS, embedding active trades, trade history, scanned setups, as well as the new interactive **Historical Backtesting** dashboard using Chart.js.
 
 ---
 
-## 2. SSE & Progress Bar Implementation
+## 2. Updated Strategy Rules (Optimized)
+
+To enhance the robustness of the Mean Reversion strategy and minimize drawdowns, the algorithm implements the following optimized guidelines:
+
+1.  **Global Trend Filter**: Trades are only allowed to be scanned and entered if the S&P 500 ETF is bullish:
+    $$\text{SPY Close} > \text{SPY SMA}_{200}$$
+2.  **Oversold Setup Criteria**: The RSI 14-period limit is tightened to the extreme to select only the safest trades:
+    $$\text{RSI}_{14} < 30 \quad \text{and} \quad \text{Price} < \text{SMA}_{20}$$
+3.  **Risk Management (Stop Loss)**: Tight fixed 3% Stop Loss for capital protection:
+    $$\text{SL} = \text{Price} \times 0.97$$
+4.  **Profit Target**: Fixed 6% Take Profit (guaranteeing a strict, mathematically built 1:2 Risk/Reward ratio):
+    $$\text{TP} = \text{Price} \times 1.06$$
+5.  **Multi-week Holding**: Active trades are held across weeks until either TP or SL is triggered, rather than forced closing on Fridays.
+
+---
+
+## 3. SSE & Progress Bar Implementation
 
 To prevent the UI from freezing during the ~100 ticker scan (which takes 30-60 seconds), we implemented a real-time progress bar and live status log using **Server-Sent Events (SSE)**.
-
-### Backend Streaming (`app.py` & `scanner.py`):
-1.  The frontend initiates a connection to `/api/scan-stream` using the JavaScript `EventSource` API.
-2.  The Flask route returns a streaming response: `Response(generate(), mimetype='text/event-stream')`.
-3.  Inside the generator, `scanner.scan_universe_generator()` is called.
-4.  As the scanner loops through tickers, it calculates completion percentage:
-    $$\text{Progress} = \frac{\text{current\_index} + 1}{\text{total\_tickers}} \times 100$$
-5.  The generator yields JSON payloads formatted as SSE data blocks:
-    ```text
-    data: {"progress": 45.2, "message": "Analyzing AAPL: RSI pullback detected", "status": "success"}
-    ```
-6.  **Edge Cases Handled**:
-    *   **Earnings Skip**: If a ticker has earnings within 2 days, it is skipped, and a warning is streamed: `{"progress": X, "message": "Skipped AAPL: Upcoming earnings (2026-05-27)", "status": "warning"}`.
-    *   **Download Failures / Rate Limits**: If `yfinance` fails or throws an exception, it is caught, and a warning is streamed: `{"progress": X, "message": "Failed to download MSFT: Rate Limited", "status": "error"}`.
-7.  At the end of the stream, the backend processes portfolio swaps, updates active trades, regenerates the dashboard HTML, and yields a final completion message:
-    ```text
-    data: {"progress": 100, "message": "Scan complete! Dashboard updated.", "status": "complete"}
-    ```
-
-### Frontend Hook (`app.py` -> `SCANNING_HTML`):
-*   A dedicated, beautiful scanning page is rendered when the user clicks "Run Scan".
-*   **Progress Bar**: A Tailwind CSS progress bar (`w-0 transition-all duration-300`) that dynamically updates its width and percentage text.
-*   **Live Activity Log**: A terminal-style box (`bg-slate-950 text-slate-200 font-mono text-xs p-4 rounded-lg h-80 overflow-y-auto border border-slate-800`) that appends every incoming message in real-time.
-*   **Color-Coded Logs**:
-    *   `success` (green): Setups found or successful scans.
-    *   `warning` (yellow): Skipped tickers (earnings).
-    *   `error` (red): Failed downloads or rate limits.
-    *   `info` (blue/gray): General progress updates.
-*   **Auto-Scroll**: The terminal automatically scrolls to the bottom as new logs arrive.
-*   **Completion Action**: Once the stream receives the `complete` status, the "View Dashboard" button is enabled, allowing the user to return to the updated dashboard.
-
----
-
-## 3. Tech Stack Details
-
-*   **Language**: Python 3.13+ compatible.
-*   **Web Framework**: Flask (v2.0+) with native streaming support.
-*   **Data Fetching**: `yfinance` (v0.2.52) for historical stock data and earnings dates.
-*   **Data Manipulation**: `pandas` (v1.3+) and `numpy` (v1.20+) for technical indicator calculations.
-*   **Styling**: Tailwind CSS (via CDN) for a modern, responsive, dark-themed dashboard.
-*   **Data Storage**: Local JSON files (`demo_archive.json`, etc.) for zero-dependency persistence.
 
 ---
 
 ## 4. Next Steps / Roadmap
 
 *   **Multi-threading / Async Scanning**: Speed up the scanning process by fetching ticker data in parallel using thread pools, while maintaining ordered SSE progress updates.
-*   **Interactive Charting**: Integrate lightweight charting libraries (e.g., TradingView Lightweight Charts or Chart.js) directly into the stock setup cards.
 *   **Custom Scan Filters**: Allow users to adjust RSI thresholds, EMA periods, and volume filters directly from the UI.
 *   **Webhook Notifications**: Add Discord or Telegram webhook alerts when high-probability setups are found.

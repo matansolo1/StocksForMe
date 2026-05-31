@@ -5,14 +5,16 @@ import finance_utils
 import data_manager
 
 FILE_DESCRIPTIONS = {
-    "app.py": "השרת המרכזי (Flask) - מנהל את הראוטינג והממשק האינטרנטי.",
-    "ui_generator.py": "מחולל הממשק - אחראי על יצירת ה-HTML והגרפים של הדאשבורד.",
-    "scanner.py": "הסורק השבועי - מחפש הזדמנויות קנייה חדשות בשוק לפי אסטרטגיה.",
+    "app.py": "השרת המרכזי (Flask) - מנהל את הראוטינג והממשק האינטרנטי וחושף API לסימולציה.",
+    "ui_generator.py": "מחולל הממשק - אחראי על יצירת ה-HTML, גרף ה-Equity Curve והצגת מדדי ה-Backtest.",
+    "scanner.py": "הסורק השבועי - מחפש הזדמנויות קנייה חדשות בשוק עם פילטר המגמה הגלובלי (SPY SMA 200).",
     "tracker.py": "מנהל המעקב - מעדכן מחירים חיים ומחשב ביצועים של הפורטפוליו.",
     "stock_api.py": "ממשק נתונים - מתקשר עם Yahoo Finance להבאת מידע פיננסי.",
     "trading_logic.py": "לוגיקת המסחר - אחראי על קבלת החלטות (קנייה, מכירה, החלפה).",
     "data_manager.py": "ניהול נתונים - אחראי על קריאה וכתיבה לקבצי JSON (DB).",
     "finance_utils.py": "כלי עזר פיננסיים - חישובי RSI, P&L, MWR ומדדים נוספים.",
+    "backtester.py": "מנוע ה-Backtest - מריץ סימולציה של 5 שנים על נתונים היסטוריים עם מטמון מקומי ומנגנון פגיעת SL/TP.",
+    "backtest_data_cache.pkl": "קובץ המטמון של הסימולציה - שומר את נתוני 5 השנים האחרונות לביצועים מהירים ב-0 קריאות API.",
     "trades_db.json": "מסד הנתונים - מכיל את כל היסטוריית הטריידים וההגדרות.",
     "tracker_dashboard.html": "הדף הראשי - הקובץ הסופי שמוצג בדפדפן."
 }
@@ -130,6 +132,11 @@ def generate_structure_html():
     tree_html += create_item("trading_logic.py", 2)
     tree_html += create_item("data_manager.py", 2)
     
+    tree_html += create_item("backtester.py", 1)
+    # Level 2 under Backtester
+    tree_html += create_item("backtest_data_cache.pkl", 2)
+    tree_html += create_item("finance_utils.py", 2)
+    
     tree_html += create_item("tracker.py", 1)
     # Level 2 under Tracker
     tree_html += create_item("stock_api.py", 2)
@@ -157,9 +164,9 @@ FUNNEL_TEMPLATE = """
     <div class="funnel-stage stage-2">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 2: הלב הטכני (RSI Filter)</h3>
-            <p><strong>הלוגיקה:</strong> איתור מניות במצב "מכירת יתר" (Oversold) לטווח קצר בתוך מגמה ארוכה.</p>
-            <p><strong>המתמטיקה:</strong> <code>RSI(14) < 43</code> וגם <code>Price < SMA(20)</code>. תנאי זה מסנן את רוב המניות ומשאיר רק את אלו שחוו תיקון.</p>
+            <h3>שלב 2: הלב הטכני (RSI & Global Trend Filter)</h3>
+            <p><strong>הלוגיקה:</strong> איתור מניות במצב "מכירת יתר" קיצוני (Oversold) רק כאשר המדד המרכזי במגמת עלייה גלובלית.</p>
+            <p><strong>המתמטיקה:</strong> <code>RSI(14) < 35</code> וגם <code>Price < SMA(20)</code>, ובנוסף מדד ה-S&P 500 במצב שורי: <code>SPY > SMA(200)</code>.</p>
         </div>
     </div>
     <div class="funnel-stage stage-3">
@@ -182,10 +189,10 @@ FUNNEL_TEMPLATE = """
         <div class="funnel-shape"></div>
         <div class="funnel-content">
             <h3>שלב 5: ניהול סיכונים (Execution)</h3>
-            <p><strong>הלוגיקה:</strong> הגנה על ההון והצבת יעדים ריאליים מבוססי תנודתיות.</p>
+            <p><strong>הלוגיקה:</strong> הגנה מוגברת על ההון והצבת יעדים ריאליים מבוססי תנודתיות.</p>
             <p><strong>המתמטיקה:</strong> 
                 <code>TP = SMA(20)</code> (חזרה לממוצע), 
-                <code>SL = Price - (2 * Volatility * Price)</code> (שימוש ב-2 סטיות תקן כמרחק הגנה).
+                <code>SL = Price - (3 * Volatility * Price)</code> (שימוש ב-3 סטיות תקן - מורחב פי 1.5 להגנה מרעשי שוק).
             </p>
         </div>
     </div>
@@ -244,6 +251,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .led-orange { background: var(--warning); box-shadow: 0 0 10px var(--warning); animation: pulse 1.5s infinite; }
         .led-red { background: #b33939; box-shadow: 0 0 5px #b33939; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         #chart-container { min-height: 400px; margin-bottom: 20px; }
         #tv-container { height: 400px; }
         .explanation-section { margin-top: 50px; padding: 30px; background: #111; border-radius: 16px; border: 1px solid #262626; width: 100%; max-width: 1200px; box-sizing: border-box; }
@@ -328,16 +336,207 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <ul style="color: var(--text-dim); line-height: 1.6;">
                     <li><strong>Max Positions:</strong> Up to 3 stocks active at once.</li>
                     <li><strong>Weighting:</strong> Dynamic based on Portfolio Value (~33.3%).</li>
-                    <li><strong>Holding Period:</strong> 5 trading days. After this, the stock enters <strong>REVIEW</strong> status.</li>
-                    <li><strong>Exit Conditions:</strong> Automatic exit at <strong>Take Profit</strong> (SMA 20) or <strong>Stop Loss</strong> (2x Volatility).</li>
+                    <li><strong>Global Filter:</strong> Entries are ONLY allowed when S&P 500 is bullish (<code>SPY > SMA 200</code>).</li>
+                    <li><strong>Setup Criteria:</strong> Close price below SMA 20, and <code>RSI 14 < 35</code> (Oversold).</li>
+                    <li><strong>Exit Conditions:</strong> Target <strong>Take Profit</strong> at SMA 20, or protect with <strong>Stop Loss</strong> at 3x Volatility (1.5x wider than original).</li>
                 </ul>
             </div>
             <div>
                 <h3 style="color: white;">Weekly Swap Logic</h3>
-                <p style="color: var(--text-dim); line-height: 1.6;">Every weekend, the scanner identifies new setups. If a stock is in <strong>REVIEW</strong>:<br>1. If a <strong>better setup</strong> is found, the current stock is closed and swapped.<br>2. If <strong>no better setup</strong> is found, it's kept for one more week.</p>
+                <p style="color: var(--text-dim); line-height: 1.6;">Every weekend, the scanner identifies new setups. If a stock is in <strong>REVIEW</strong>:<br>1. If a <strong>better setup</strong> is found, the current stock is closed and swapped.<br>2. If <strong>no better setup</strong> is found, it's kept for one more week.<br>3. If SPY is below SMA 200, no new swaps or trades are initiated.</p>
             </div>
         </div>
     </div>
+
+    <!-- Historical Backtesting Section -->
+    <div class="explanation-section" style="margin-top: 30px;">
+        <h2 style="color: #39FF14; margin-top: 0;">Historical Backtesting (5 Years)</h2>
+        <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">בדיקת אסטרטגיית החזרה לממוצע (Mean Reversion) לאחור לאורך 5 השנים האחרונות שבוצעו שבוע אחר שבוע (קנייה ביום המסחר הראשון של השבוע ב-Open, ומכירה בסוף השבוע ב-Close).</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px; align-items: start;">
+            <!-- Inputs and Stats -->
+            <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
+                <div style="margin-bottom: 15px; text-align: left;">
+                    <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Strategy Mode:</label>
+                    <select id="backtest-strategy-mode" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+                        <option value="mean_reversion">Mean Reversion</option>
+                        <option value="momentum">Momentum</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 15px; text-align: left;">
+                    <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Initial Capital (USD):</label>
+                    <input type="number" id="backtest-capital" value="10000" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 15px; text-align: left; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Target RSI:</label>
+                        <input type="number" id="backtest-rsi" value="30" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Stop Loss %:</label>
+                        <input type="number" id="backtest-sl" value="3.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Take Profit %:</label>
+                        <input type="number" id="backtest-tp" value="6.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                </div>
+                <button onclick="runBacktest()" id="backtest-btn" class="btn btn-primary" style="width: 100%; background: #39FF14; color: black; font-weight: bold; border: none; padding: 12px; border-radius: 8px;">Run 5-Year Backtest</button>
+                
+                <!-- Backtest Loader -->
+                <div id="backtest-loader" style="display: none; text-align: center; margin-top: 20px;">
+                    <div style="display: inline-block; width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-radius: 50%; border-top-color: #39FF14; animation: spin 1s ease-in-out infinite;"></div>
+                    <p style="font-size: 0.85rem; color: #aaa; margin-top: 8px;">Downloading 5-year batch & running simulation...</p>
+                </div>
+                
+                <!-- Backtest Stats -->
+                <div id="backtest-stats" style="display: none; margin-top: 25px; border-top: 1px solid #333; padding-top: 20px; text-align: left;">
+                    <h4 style="margin: 0 0 10px 0; color: #39FF14; font-size: 1rem;">Recent Period (2021-2026):</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 15px;">
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">TOTAL RETURN</div>
+                            <div id="recent-return" style="font-size: 1.1rem; font-weight: 800; color: #39FF14; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">WIN RATE</div>
+                            <div id="recent-winrate" style="font-size: 1.1rem; font-weight: 800; color: #39FF14; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">MAX DRAWDOWN</div>
+                            <div id="recent-drawdown" style="font-size: 1.1rem; font-weight: 800; color: #ff5252; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">TOTAL TRADES</div>
+                            <div id="recent-trades" style="font-size: 1.1rem; font-weight: 800; color: #2196F3; margin-top: 2px;">--</div>
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 0 0 10px 0; color: #2196F3; font-size: 1rem;">Calm Period (2010-2020):</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">TOTAL RETURN</div>
+                            <div id="calm-return" style="font-size: 1.1rem; font-weight: 800; color: #39FF14; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">WIN RATE</div>
+                            <div id="calm-winrate" style="font-size: 1.1rem; font-weight: 800; color: #39FF14; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">MAX DRAWDOWN</div>
+                            <div id="calm-drawdown" style="font-size: 1.1rem; font-weight: 800; color: #ff5252; margin-top: 2px;">--</div>
+                        </div>
+                        <div style="background: #0a0a0a; padding: 8px; border-radius: 8px; border: 1px solid #222; text-align: center;">
+                            <div style="font-size: 0.7rem; color: var(--text-dim);">TOTAL TRADES</div>
+                            <div id="calm-trades" style="font-size: 1.1rem; font-weight: 800; color: #2196F3; margin-top: 2px;">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Backtest Chart -->
+            <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333; min-height: 350px; display: flex; flex-direction: column; justify-content: center; position: relative;">
+                <div id="backtest-chart-placeholder" style="text-align: center; color: var(--text-dim);">
+                    <p>Enter capital and click "Run 5-Year Backtest" to generate the interactive equity curve.</p>
+                </div>
+                <div id="backtest-chart-container" style="display: none; width: 100%; gap: 20px;">
+                    <div style="flex: 1; min-width: 0; height: 350px;">
+                        <h4 style="text-align: center; margin: 0 0 10px 0; color: #39FF14; font-size: 0.9rem;">Recent Period (2021-2026)</h4>
+                        <canvas id="recentChart" style="max-height: 310px; width: 100%; height: 100%;"></canvas>
+                    </div>
+                    <div style="flex: 1; min-width: 0; height: 350px;">
+                        <h4 style="text-align: center; margin: 0 0 10px 0; color: #2196F3; font-size: 0.9rem;">Calm Period (2010-2020)</h4>
+                        <canvas id="calmChart" style="max-height: 310px; width: 100%; height: 100%;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Strategy Cheat Sheet & Robustness Matrix Section -->
+    <div class="explanation-section" style="margin-top: 30px;">
+        <h2 style="color: #39FF14; margin-top: 0; display: flex; align-items: center; gap: 10px;">
+            <span>📊</span> Strategy Cheat Sheet & Robustness Matrix
+        </h2>
+        <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">
+            סיכום ממצאי המחקר ומבחני החוסן (Robustness Tests) על פני תקופות שוק שונות. השורה המודגשת מייצגת את האסטרטגיה המנצחת שנבחרה לייצור.
+        </p>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+                <thead>
+                    <tr style="border-bottom: 2px solid #333; background: #1a1a1a;">
+                        <th style="padding: 12px; color: var(--text-dim);">Strategy Mode</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Target RSI</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Stop Loss</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Take Profit</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Chaos Era (2021-2026)</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Calm Era (2010-2020)</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Full Horizon (2010-2026)</th>
+                        <th style="padding: 12px; color: var(--text-dim); text-align: center;">Max DD (Calm/Chaos)</th>
+                        <th style="padding: 12px; color: var(--text-dim);">Key Insight</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom: 1px solid #262626; background: #111;">
+                        <td style="padding: 12px; font-weight: bold;">Mean Reversion</td>
+                        <td style="padding: 12px; text-align: center;">30</td>
+                        <td style="padding: 12px; text-align: center;">3.0%</td>
+                        <td style="padding: 12px; text-align: center;">6.0%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252; font-weight: bold;">-30.93% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 33.2%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+63.34% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 35.5%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14;">+12.8%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252;">-38.8% / -44.9%</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">סובלת מתפיסת סכינים נופלות בשוק רגוע ומפסידה למדד.</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #262626; background: #111;">
+                        <td style="padding: 12px; font-weight: bold;">Momentum (Default)</td>
+                        <td style="padding: 12px; text-align: center;">60</td>
+                        <td style="padding: 12px; text-align: center;">5.0%</td>
+                        <td style="padding: 12px; text-align: center;">12.0%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252; font-weight: bold;">-4.88% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 31.2%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+148.73% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 37.5%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14;">+136.6%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252;">-33.5% / -20.6%</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">נקודת מוצא טובה, אך נוטה לחטוף Bull Traps בשווקים תנודתיים.</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #262626; background: #111;">
+                        <td style="padding: 12px; font-weight: bold;">Momentum (Scenario 1)</td>
+                        <td style="padding: 12px; text-align: center;">65</td>
+                        <td style="padding: 12px; text-align: center;">4.0%</td>
+                        <td style="padding: 12px; text-align: center;">12.0%</td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+12.94% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 27.6%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+198.16% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 34.5%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+236.7%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252;">-27.3% / -19.5%</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">חגורות בטיחות קשוחות. יחס R:R של 1:3 שמגן על התיק ומציג חוסן גבוה.</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #262626; background: #111;">
+                        <td style="padding: 12px; font-weight: bold;">Momentum (Scenario 2)</td>
+                        <td style="padding: 12px; text-align: center;">60</td>
+                        <td style="padding: 12px; text-align: center;">7.5%</td>
+                        <td style="padding: 12px; text-align: center;">15.0%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252; font-weight: bold;">-8.41% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 34.0%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+268.60% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 47.0%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+237.6%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252;">-41.8% / -17.6%</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">מקסום רווחים קיצוני בשוק שורי וליניארי, אך מסוכן ומדמם בשוק תנודתי.</td>
+                    </tr>
+                    <!-- WINNING ROW (Highlighted with soft green background and bright neon green border) -->
+                    <tr style="outline: 2px solid #39FF14; background: rgba(57, 255, 20, 0.08); box-shadow: 0 0 15px rgba(57, 255, 20, 0.15);">
+                        <td style="padding: 12px; font-weight: bold; color: #39FF14;">🏆 Momentum (Scenario 3)</td>
+                        <td style="padding: 12px; text-align: center; font-weight: bold; color: #39FF14;">55</td>
+                        <td style="padding: 12px; text-align: center; font-weight: bold; color: #39FF14;">5.0%</td>
+                        <td style="padding: 12px; text-align: center; font-weight: bold; color: #39FF14;">10.0%</td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+100.57% <span style="font-size: 0.8rem; color: #39FF14; font-weight: normal;">(WR: 43.1%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+232.78% <span style="font-size: 0.8rem; color: #39FF14; font-weight: normal;">(WR: 43.6%)</span></td>
+                        <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+567.8%</td>
+                        <td style="padding: 12px; text-align: center; color: #ff5252; font-weight: bold;">-22.0% / -25.4%</td>
+                        <td style="padding: 12px; color: #fff; font-weight: bold; font-size: 0.85rem; text-align: right; direction: rtl;">הגביע הקדוש. אחוז הצלחה יציב לחלוטין בשתי התקופות ותשואה מטורפת.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div style="width: 100%; max-width: 1200px; margin-top: 30px;">
         <h3>Historical Log</h3>
         <table style="background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border);">
@@ -347,8 +546,157 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <button id="reset-btn" onclick="resetSystem()">Reset & Start Live Trading</button>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const stockData = {{charts_json}};
+
+        async function runBacktest() {
+            const capitalInput = document.getElementById('backtest-capital');
+            const rsiInput = document.getElementById('backtest-rsi');
+            const slInput = document.getElementById('backtest-sl');
+            const tpInput = document.getElementById('backtest-tp');
+            const modeInput = document.getElementById('backtest-strategy-mode');
+            
+            const capital = parseFloat(capitalInput.value) || 10000.0;
+            const targetRsi = parseFloat(rsiInput.value) || 30.0;
+            const stopLossPct = parseFloat(slInput.value) || 3.0;
+            const takeProfitPct = parseFloat(tpInput.value) || 6.0;
+            const strategyMode = modeInput.value;
+            
+            const btn = document.getElementById('backtest-btn');
+            const loader = document.getElementById('backtest-loader');
+            const statsDiv = document.getElementById('backtest-stats');
+            const placeholder = document.getElementById('backtest-chart-placeholder');
+            const chartContainer = document.getElementById('backtest-chart-container');
+            
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            loader.style.display = 'block';
+            statsDiv.style.display = 'none';
+            placeholder.style.display = 'none';
+            chartContainer.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/backtest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        initial_capital: capital,
+                        target_rsi: targetRsi,
+                        stop_loss_pct: stopLossPct,
+                        take_profit_pct: takeProfitPct,
+                        strategy_mode: strategyMode
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    placeholder.style.display = 'block';
+                    placeholder.innerHTML = `<p style="color: #ff5252;">${data.error}</p>`;
+                    return;
+                }
+                
+                const recent = data.recent;
+                const calm = data.calm;
+                
+                if (recent.error || calm.error) {
+                    alert('Error running backtest: ' + (recent.error || calm.error));
+                    placeholder.style.display = 'block';
+                    placeholder.innerHTML = `<p style="color: #ff5252;">${recent.error || calm.error}</p>`;
+                    return;
+                }
+                
+                // Show stats for Recent
+                document.getElementById('recent-return').innerText = (recent.stats.total_return_pct >= 0 ? '+' : '') + recent.stats.total_return_pct.toFixed(2) + '%';
+                document.getElementById('recent-winrate').innerText = recent.stats.win_rate_pct.toFixed(1) + '%';
+                document.getElementById('recent-drawdown').innerText = '-' + recent.stats.max_drawdown_pct.toFixed(1) + '%';
+                document.getElementById('recent-trades').innerText = recent.stats.total_trades;
+                document.getElementById('recent-return').style.color = recent.stats.total_return_pct >= 0 ? '#39FF14' : '#ff5252';
+
+                // Show stats for Calm
+                document.getElementById('calm-return').innerText = (calm.stats.total_return_pct >= 0 ? '+' : '') + calm.stats.total_return_pct.toFixed(2) + '%';
+                document.getElementById('calm-winrate').innerText = calm.stats.win_rate_pct.toFixed(1) + '%';
+                document.getElementById('calm-drawdown').innerText = '-' + calm.stats.max_drawdown_pct.toFixed(1) + '%';
+                document.getElementById('calm-trades').innerText = calm.stats.total_trades;
+                document.getElementById('calm-return').style.color = calm.stats.total_return_pct >= 0 ? '#39FF14' : '#ff5252';
+                
+                statsDiv.style.display = 'block';
+                chartContainer.style.display = 'flex';
+                
+                // Destroy previous charts if they exist
+                if (window.myRecentChart) window.myRecentChart.destroy();
+                if (window.myCalmChart) window.myCalmChart.destroy();
+                
+                // Create Recent Chart
+                const recentLabels = recent.equity_curve.map(p => p.date);
+                const recentValues = recent.equity_curve.map(p => p.equity);
+                const ctxRecent = document.getElementById('recentChart').getContext('2d');
+                window.myRecentChart = new Chart(ctxRecent, {
+                    type: 'line',
+                    data: {
+                        labels: recentLabels,
+                        datasets: [{
+                            label: 'Recent Period Equity',
+                            data: recentValues,
+                            borderColor: '#39FF14',
+                            backgroundColor: 'rgba(57, 255, 20, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#222' }, ticks: { color: '#aaa', maxTicksLimit: 6 } },
+                            y: { grid: { color: '#222' }, ticks: { color: '#aaa' } }
+                        }
+                    }
+                });
+
+                // Create Calm Chart
+                const calmLabels = calm.equity_curve.map(p => p.date);
+                const calmValues = calm.equity_curve.map(p => p.equity);
+                const ctxCalm = document.getElementById('calmChart').getContext('2d');
+                window.myCalmChart = new Chart(ctxCalm, {
+                    type: 'line',
+                    data: {
+                        labels: calmLabels,
+                        datasets: [{
+                            label: 'Calm Period Equity',
+                            data: calmValues,
+                            borderColor: '#2196F3',
+                            backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1,
+                            pointRadius: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#222' }, ticks: { color: '#aaa', maxTicksLimit: 6 } },
+                            y: { grid: { color: '#222' }, ticks: { color: '#aaa' } }
+                        }
+                    }
+                });
+                
+            } catch (e) {
+                alert('An error occurred while running the backtest: ' + e);
+                placeholder.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                loader.style.display = 'none';
+            }
+        }
         
         function displayTickerData(ticker) {
             const data = stockData[ticker];
@@ -465,8 +813,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('dryRunStartBtn').disabled = true;
             document.getElementById('dryRunStartBtn').style.opacity = '0.5';
             
+            const strategyMode = document.getElementById('dryrun-strategy-mode').value;
+            const targetRsi = document.getElementById('dryrun-rsi').value;
+            const stopLossPct = document.getElementById('dryrun-sl').value;
+            const takeProfitPct = document.getElementById('dryrun-tp').value;
+            
             appendDryRunLog('[System] Connecting to dry run stream...');
-            dryRunEventSource = new EventSource('/api/dry-run-stream');
+            dryRunEventSource = new EventSource(`/api/dry-run-stream?strategy_mode=${strategyMode}&target_rsi=${targetRsi}&stop_loss_pct=${stopLossPct}&take_profit_pct=${takeProfitPct}`);
 
             dryRunEventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);

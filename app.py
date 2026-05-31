@@ -17,21 +17,62 @@ DEPOSIT_FORM_HTML = """
     <title>Weekly Scan - Deposit</title>
     <style>
         body { background: #0a0a0a; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #141414; padding: 40px; border-radius: 16px; border: 1px solid #262626; text-align: center; }
-        input { background: #1a1a1a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 200px; font-size: 1.2rem; margin: 20px 0; }
-        .btn { background: #ff5252; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .card { background: #141414; padding: 40px; border-radius: 16px; border: 1px solid #262626; text-align: center; width: 450px; }
+        input, select { background: #1a1a1a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; margin: 10px 0; box-sizing: border-box; }
+        .btn { background: #ff5252; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; font-size: 1.1rem; margin-top: 15px; }
+        .param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 10px 0; }
+        label { display: block; color: #aaa; font-size: 0.8rem; text-align: left; margin-bottom: 2px; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>Weekly Scan</h2>
-        <p>Did you deposit money this week?</p>
+        <h2>Weekly Scan Setup</h2>
         <form action="/execute-scan" method="post">
-            <input type="number" name="deposit" step="0.01" value="0" autofocus>
-            <br>
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label>Strategy Mode:</label>
+                <select id="live-strategy-mode" name="strategy_mode">
+                    <option value="mean_reversion">Mean Reversion</option>
+                    <option value="momentum">Momentum</option>
+                </select>
+            </div>
+            
+            <div class="param-grid">
+                <div>
+                    <label>Target RSI:</label>
+                    <input type="number" id="live-rsi" name="target_rsi" value="30">
+                </div>
+                <div>
+                    <label>Stop Loss %:</label>
+                    <input type="number" id="live-sl" name="stop_loss_pct" value="3.0" step="0.1">
+                </div>
+                <div>
+                    <label>Take Profit %:</label>
+                    <input type="number" id="live-tp" name="take_profit_pct" value="6.0" step="0.1">
+                </div>
+            </div>
+            
+            <div style="text-align: left; margin-top: 15px;">
+                <label>Deposit Amount (USD) for this week:</label>
+                <input type="number" name="deposit" step="0.01" value="0" autofocus>
+            </div>
             <button type="submit" class="btn">Confirm & Run Scan</button>
         </form>
     </div>
+
+    <script>
+        document.getElementById('live-strategy-mode').addEventListener('change', function() {
+            const mode = this.value;
+            if (mode === 'mean_reversion') {
+                document.getElementById('live-rsi').value = '30';
+                document.getElementById('live-sl').value = '3.0';
+                document.getElementById('live-tp').value = '6.0';
+            } else if (mode === 'momentum') {
+                document.getElementById('live-rsi').value = '60';
+                document.getElementById('live-sl').value = '5.0';
+                document.getElementById('live-tp').value = '12.0';
+            }
+        });
+    </script>
 </body>
 </html>
 """
@@ -54,6 +95,11 @@ def run_scan():
 @app.route('/execute-scan', methods=['POST'])
 def execute_scan():
     deposit = float(request.form.get('deposit', 0))
+    strategy_mode = request.form.get('strategy_mode', 'mean_reversion')
+    target_rsi = float(request.form.get('target_rsi', 30.0))
+    stop_loss_pct = float(request.form.get('stop_loss_pct', 3.0))
+    take_profit_pct = float(request.form.get('take_profit_pct', 6.0))
+    
     if deposit > 0:
         metadata = data_manager.get_metadata()
         new_total = metadata.get('total_deposits', 0) + deposit
@@ -61,7 +107,13 @@ def execute_scan():
     
     # Instead of running scanner.py as a subprocess and blocking, we render a scanning page
     # that connects to the SSE stream.
-    return render_template_string(SCANNING_HTML)
+    return render_template_string(
+        SCANNING_HTML,
+        strategy_mode=strategy_mode,
+        target_rsi=target_rsi,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct
+    )
 
 SCANNING_HTML = """
 <!DOCTYPE html>
@@ -130,7 +182,7 @@ SCANNING_HTML = """
             logBox.scrollTop = logBox.scrollHeight;
         }
 
-        const eventSource = new EventSource('/api/scan-stream');
+        const eventSource = new EventSource('/api/scan-stream?strategy_mode={{ strategy_mode }}&target_rsi={{ target_rsi }}&stop_loss_pct={{ stop_loss_pct }}&take_profit_pct={{ take_profit_pct }}');
 
         eventSource.onmessage = function(event) {
             const data = JSON.parse(event.data);
@@ -169,10 +221,15 @@ SCANNING_HTML = """
 @app.route('/api/scan-stream')
 def scan_stream():
     import json
-    from flask import Response
+    from flask import Response, request
     import scanner
     import trading_logic
     import data_manager
+    
+    strategy_mode = request.args.get('strategy_mode', 'mean_reversion')
+    target_rsi = float(request.args.get('target_rsi', 30.0))
+    stop_loss_pct = float(request.args.get('stop_loss_pct', 3.0))
+    take_profit_pct = float(request.args.get('take_profit_pct', 6.0))
     
     def generate():
         db = data_manager.load_db()
@@ -188,7 +245,7 @@ def scan_stream():
         top_setups = []
         
         # Stream the scan progress
-        for event in scanner.scan_universe_generator():
+        for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
             if "top_setups" in event:
                 top_setups = event["top_setups"]
             yield f"data: {json.dumps(event)}\n\n"
@@ -238,11 +295,16 @@ def manual_clearance():
 @app.route('/api/dry-run-stream')
 def dry_run_stream():
     import json
-    from flask import Response
+    from flask import Response, request
     import scanner
     
+    strategy_mode = request.args.get('strategy_mode', 'mean_reversion')
+    target_rsi = float(request.args.get('target_rsi', 30.0))
+    stop_loss_pct = float(request.args.get('stop_loss_pct', 3.0))
+    take_profit_pct = float(request.args.get('take_profit_pct', 6.0))
+    
     def generate():
-        for event in scanner.scan_universe_generator():
+        for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
             yield f"data: {json.dumps(event)}\n\n"
             
     return Response(generate(), mimetype='text/event-stream')
@@ -290,6 +352,25 @@ def market_status():
 @app.route('/structure')
 def structure():
     return ui_generator.generate_structure_html()
+
+@app.route('/api/backtest', methods=['POST'])
+def api_backtest():
+    import backtester
+    data = request.get_json() or {}
+    initial_capital = float(data.get('initial_capital', 10000.0))
+    target_rsi = float(data.get('target_rsi', 30.0))
+    stop_loss_pct = float(data.get('stop_loss_pct', 3.0))
+    take_profit_pct = float(data.get('take_profit_pct', 6.0))
+    strategy_mode = data.get('strategy_mode', 'mean_reversion')
+    
+    results = backtester.run_backtest(
+        initial_capital=initial_capital,
+        target_rsi=target_rsi,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+        strategy_mode=strategy_mode
+    )
+    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

@@ -67,7 +67,7 @@ def process_scanner_swaps(trades, new_setups, position_size_usd=None):
                 new_trade = {
                     "ticker": new_s['Ticker'],
                     "entry_price": entry_price,
-                    "take_profit": new_s['SMA_20'],
+                    "take_profit": new_s.get('TakeProfit', new_s['SMA_20']),
                     "stop_loss": new_s['StopLoss'],
                     "risk_reward": new_s['RiskReward'],
                     "rsi": new_s['RSI_14'],
@@ -100,7 +100,7 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             trade = {
                 "ticker": s['Ticker'],
                 "entry_price": entry_price,
-                "take_profit": s['SMA_20'],
+                "take_profit": s.get('TakeProfit', s['SMA_20']),
                 "stop_loss": s['StopLoss'],
                 "risk_reward": s['RiskReward'],
                 "rsi": s['RSI_14'],
