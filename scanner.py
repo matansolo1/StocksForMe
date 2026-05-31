@@ -94,12 +94,12 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
                     passed_rules = True
                     rank_score = current_close / high52w if high52w > 0 else 0.0
         else: # mean_reversion
-            # Strategy Rules (Strict Oversold: RSI < target_rsi and Price < SMA_20)
-            if not np.isnan(current_sma) and not np.isnan(current_rsi) and \
-               current_close < current_sma and current_rsi < target_rsi:
-                passed_rules = True
-                dist_pct = (current_sma - current_close) / current_close
-                rank_score = dist_pct / current_vol if current_vol > 0 else 0.0
+            # Smart Reversal Trigger: RSI was below target yesterday, and crossed above it today
+            if not np.isnan(current_sma) and not np.isnan(current_rsi) and not np.isnan(rsi_prev):
+                if rsi_prev < target_rsi and current_rsi >= target_rsi and current_close < current_sma:
+                    passed_rules = True
+                    dist_pct = (current_sma - current_close) / current_close
+                    rank_score = dist_pct / current_vol if current_vol > 0 else 0.0
                 
         if passed_rules:
             # Earnings Filter (7-day gap protection)
@@ -137,49 +137,39 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
     
     yield {"progress": 100, "message": f"Scan complete! Found {len(results)} setups. Top 3: {', '.join([x['Ticker'] for x in top_setups])}", "complete": True, "top_setups": top_setups}
 
-def scan_universe():
-    """
-    Scans the defined universe for trading setups based on RSI and SMA.
-    Returns: list of top 3 setups.
-    """
+import sys
+
+def scan_universe(strategy_mode="mean_reversion", target_rsi=30.0, stop_loss_pct=3.0, take_profit_pct=6.0):
     top_setups = []
-    for event in scan_universe_generator():
+    for event in scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
         print(event["message"])
         if "top_setups" in event:
             top_setups = event["top_setups"]
     return top_setups
 
 def main():
-    """
-    Main entry point for the Weekly Scanner.
-    """
-    print("Step 1: Running Market Scan...")
-    top_setups = scan_universe()
+    strategy_mode = sys.argv[1] if len(sys.argv) > 1 else "mean_reversion"
+    target_rsi = float(sys.argv[2]) if len(sys.argv) > 2 else 30.0
+    stop_loss_pct = float(sys.argv[3]) if len(sys.argv) > 3 else 3.0
+    take_profit_pct = float(sys.argv[4]) if len(sys.argv) > 4 else 6.0
+
+    print(f"Step 1: Running Market Scan in {strategy_mode} mode...")
+    top_setups = scan_universe(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct)
     
     print("Step 2: Processing Swaps and New Trades...")
     db = data_manager.load_db()
     trades = db["trades"]
     metadata = db["portfolio_metadata"]
     
-    # Calculate position size: 33.3% of (Deposits + Current Profits)
     total_deposits = metadata.get("total_deposits", 0)
-    
-    # If starting live with $0, we need a deposit first. 
-    # The app.py ensures deposit is added before scanner.py runs.
     if total_deposits <= 0:
         print("Warning: No deposits found. Position sizing will be 0.")
         pos_size = 0
     else:
-        # Base position sizing on actual deposits
         pos_size = total_deposits / 3.0
     
-    # Process Swaps (REVIEW -> CLOSED/ACTIVE)
     trades = trading_logic.process_scanner_swaps(trades, top_setups, position_size_usd=pos_size)
-    
-    # Add New Trades if space
     trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
-    
-    # Save back to DB
     data_manager.save_trades(trades)
     
     print("Step 3: Triggering Tracker Update...")
