@@ -65,10 +65,10 @@ def build_diagnostic_message(stats, strategy_mode, is_spy_bullish, target_rsi):
             msg += "\n📌 Recommendation: Consider switching to Mean Reversion strategy."
         else:
             msg += "No stocks below SMA 20. Market is very strong."
-            msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy (RSI=55)."
+            msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy."
     elif is_spy_bullish and strategy_mode == "mean_reversion":
         msg += "Market is BULLISH. Mean Reversion setups are rare in strong markets."
-        msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy (RSI=55)."
+        msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy."
     else:
         msg += "No qualifying trades this week."
         msg += "\n📌 Recommendation: Stay in cash and wait for better setups."
