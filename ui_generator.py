@@ -278,6 +278,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div style="display: flex; gap: 10px; align-items: center;">
             {{clearance_button}}
             <button onclick="openDryRunModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; background: transparent;">Dry Run Scanner</button>
+            <a href="/under-the-hood" class="btn btn-secondary" style="border-color: #2196F3; color: #2196F3;">Under the Hood</a>
             <a href="/structure" class="btn btn-secondary" style="border-color: var(--accent); color: var(--accent);">Architecture Map</a>
             <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
             <a href="/refresh-tracker" class="btn btn-secondary">Refresh Prices</a>
@@ -770,6 +771,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         // Dry Run Scanner Logic
         let dryRunEventSource = null;
 
+        // Auto-update parameter defaults when strategy mode changes
+        function updateDryRunDefaults() {
+            const mode = document.getElementById('dryrun-strategy-mode').value;
+            if (mode === 'mean_reversion') {
+                document.getElementById('dryrun-rsi').value = '30';
+                document.getElementById('dryrun-sl').value = '3.0';
+                document.getElementById('dryrun-tp').value = '6.0';
+            } else if (mode === 'momentum') {
+                document.getElementById('dryrun-rsi').value = '55';
+                document.getElementById('dryrun-sl').value = '5.0';
+                document.getElementById('dryrun-tp').value = '10.0';
+            }
+        }
+
         window.openDryRunModal = function() {
             document.getElementById('dryRunModal').style.display = 'flex';
             document.getElementById('dryRunProgressSection').style.display = 'block';
@@ -780,6 +795,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('dryRunLog').innerHTML = '<div style="color: #555;">[System] Ready to start dry run...</div>';
             document.getElementById('dryRunStartBtn').disabled = false;
             document.getElementById('dryRunStartBtn').style.opacity = '1';
+            
+            // Attach event listener for strategy mode changes
+            const strategySelect = document.getElementById('dryrun-strategy-mode');
+            if (strategySelect) {
+                strategySelect.onchange = updateDryRunDefaults;
+            }
         };
 
         window.closeDryRunModal = function() {
@@ -883,6 +904,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span onclick="closeDryRunModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
             <h2 style="margin-top: 0; color: #39FF14;">Dry Run Scanner</h2>
             <p style="color: #a0a0a0; font-size: 0.9rem;">Runs the full scanning algorithm on live data. Results are NOT saved to the database.</p>
+            
+            <!-- Strategy Configuration Section -->
+            <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; color: white; font-size: 1rem;">Strategy Configuration</h3>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Strategy Mode:</label>
+                    <select id="dryrun-strategy-mode" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+                        <option value="mean_reversion">Mean Reversion</option>
+                        <option value="momentum" selected>Momentum</option>
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Target RSI:</label>
+                        <input type="number" id="dryrun-rsi" value="55" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Stop Loss %:</label>
+                        <input type="number" id="dryrun-sl" value="5.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Take Profit %:</label>
+                        <input type="number" id="dryrun-tp" value="10.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                    </div>
+                </div>
+            </div>
             
             <!-- Progress Section -->
             <div id="dryRunProgressSection" style="margin: 20px 0;">

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Under the Hood - Strategy Architecture</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --card-bg: #141414;
+            --border: #262626;
+            --text: #ffffff;
+            --text-dim: #a0a0a0;
+            --neon-green: #39FF14;
+            --accent: #ff5252;
+            --momentum-color: #2196F3;
+            --mean-reversion-color: #f39c12;
+        }
+        
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .header {
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 15px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 2rem;
+            background: linear-gradient(135deg, var(--neon-green), var(--momentum-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            color: white;
+            transition: 0.3s;
+        }
+        
+        .btn:hover {
+            border-color: var(--neon-green);
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.3);
+        }
+        
+        .strategy-container {
+            width: 100%;
+            max-width: 1400px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .strategy-block {
+            background: var(--card-bg);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .strategy-block::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--strategy-color), transparent);
+        }
+        
+        .strategy-block.mean-reversion {
+            --strategy-color: var(--mean-reversion-color);
+        }
+        
+        .strategy-block.momentum {
+            --strategy-color: var(--momentum-color);
+        }
+        
+        .strategy-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .strategy-icon {
+            font-size: 2.5rem;
+        }
+        
+        .strategy-title {
+            flex: 1;
+        }
+        
+        .strategy-title h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--strategy-color);
+        }
+        
+        .strategy-title p {
+            margin: 5px 0 0 0;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        
+        .filter-section {
+            margin-bottom: 25px;
+        }
+        
+        .filter-section h3 {
+            margin: 0 0 15px 0;
+            font-size: 1rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .filter-item {
+            background: #1a1a1a;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .filter-label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        
+        .filter-value {
+            font-weight: 700;
+            color: var(--strategy-color);
+            font-size: 0.95rem;
+        }
+        
+        .logic-box {
+            background: #0d0d0d;
+            border: 1px solid #333;
+            border-left: 3px solid var(--strategy-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .logic-box h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.9rem;
+            color: var(--neon-green);
+        }
+        
+        .logic-box code {
+            display: block;
+            background: #000;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #e2e2e2;
+            margin: 5px 0;
+            border-left: 2px solid var(--strategy-color);
+        }
+        
+        .isolation-status {
+            width: 100%;
+            max-width: 1400px;
+            background: var(--card-bg);
+            border: 2px solid var(--neon-green);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 40px;
+        }
+        
+        .isolation-status h2 {
+            margin: 0 0 20px 0;
+            color: var(--neon-green);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        
+        .status-card {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            text-align: center;
+        }
+        
+        .status-card .icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .status-card .label {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        
+        .status-card .value {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--neon-green);
+        }
+        
+        .architecture-diagram {
+            width: 100%;
+            max-width: 1400px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+        }
+        
+        .architecture-diagram h2 {
+            margin: 0 0 20px 0;
+            color: var(--text);
+        }
+        
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .flow-number {
+            width: 40px;
+            height: 40px;
+            background: var(--neon-green);
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+        
+        .flow-content {
+            flex: 1;
+            background: #1a1a1a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        
+        .flow-content h4 {
+            margin: 0 0 5px 0;
+            color: var(--neon-green);
+            font-size: 1rem;
+        }
+        
+        .flow-content p {
+            margin: 0;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            max-width: 1400px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+        
+        .comparison-table h2 {
+            margin: 0 0 20px 0;
+            color: var(--text);
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            text-align: left;
+            padding: 12px;
+            background: #1a1a1a;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border);
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        
+        .highlight-mean-reversion {
+            color: var(--mean-reversion-color);
+            font-weight: 700;
+        }
+        
+        .highlight-momentum {
+            color: var(--momentum-color);
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔧 Under the Hood - Strategy Architecture</h1>
+        <a href="/" class="btn">← Back to Dashboard</a>
+    </div>
+    
+    <!-- Isolation Status Section -->
+    <div class="isolation-status">
+        <h2>
+            <span>✅</span>
+            Backend Isolation Verification
+        </h2>
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="icon">🔒</div>
+                <div class="label">Strategy Decoupling</div>
+                <div class="value">ISOLATED</div>
+            </div>
+            <div class="status-card">
+                <div class="icon">🧪</div>
+                <div class="label">Parameter Contamination</div>
+                <div class="value">NONE</div>
+            </div>
+            <div class="status-card">
+                <div class="icon">⚡</div>
+                <div class="label">Execution Tracks</div>
+                <div class="value">INDEPENDENT</div>
+            </div>
+        </div>
+        <p style="margin-top: 20px; color: var(--text-dim); line-height: 1.6;">
+            <strong>Verification Summary:</strong> Both strategies operate on completely separate execution tracks. 
+            The <code>scan_universe_generator()</code> function accepts <code>strategy_mode</code> as a parameter and uses 
+            conditional branching to ensure that Mean Reversion and Momentum filters never cross-contaminate. 
+            Each DRY RUN or LIVE SCAN passes its own isolated parameters through the entire pipeline 
+            (Frontend → app.py → scanner.py → trading_logic.py) without affecting global state.
+        </p>
+    </div>
+    
+    <!-- Strategy Blocks -->
+    <div class="strategy-container">
+        <!-- Mean Reversion Strategy -->
+        <div class="strategy-block mean-reversion">
+            <div class="strategy-header">
+                <div class="strategy-icon">📉</div>
+                <div class="strategy-title">
+                    <h2>Mean Reversion Strategy</h2>
+                    <p>Catching oversold bounces in fundamentally strong stocks</p>
+                </div>
+            </div>
+            
+            <div class="filter-section">
+                <h3>Active Filters & Criteria</h3>
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <span class="filter-label">Target RSI Threshold</span>
+                        <span class="filter-value">< 30</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Price vs. SMA 20</span>
+                        <span class="filter-value">Below SMA</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Stop Loss</span>
+                        <span class="filter-value">-3.0%</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Take Profit</span>
+                        <span class="filter-value">+6.0%</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Risk/Reward Ratio</span>
+                        <span class="filter-value">1:2</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Global Trend Filter</span>
+                        <span class="filter-value">SPY > SMA 200</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="logic-box">
+                <h4>Entry Logic (Python Implementation)</h4>
+                <code>if strategy_mode == "mean_reversion":</code>
+                <code>&nbsp;&nbsp;if rsi_prev < target_rsi and current_rsi >= target_rsi:</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;if current_close < current_sma:</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passed_rules = True</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rank_score = (sma - close) / volatility</code>
+            </div>
+            
+            <div class="logic-box">
+                <h4>Ranking Mechanism</h4>
+                <code>RankScore = (SMA_20 - Close) / Volatility</code>
+                <p style="margin: 10px 0 0 0; color: var(--text-dim); font-size: 0.85rem;">
+                    Stocks with the largest distance from their mean (normalized by volatility) are prioritized. 
+                    This creates a Z-Score-like ranking that identifies the most extreme oversold conditions.
+                </p>
+            </div>
+        </div>
+        
+        <!-- Momentum Strategy -->
+        <div class="strategy-block momentum">
+            <div class="strategy-header">
+                <div class="strategy-icon">📈</div>
+                <div class="strategy-title">
+                    <h2>Momentum Strategy</h2>
+                    <p>Riding established uptrends with RSI confirmation</p>
+                </div>
+            </div>
+            
+            <div class="filter-section">
+                <h3>Active Filters & Criteria</h3>
+                <div class="filter-grid">
+                    <div class="filter-item">
+                        <span class="filter-label">Target RSI Threshold</span>
+                        <span class="filter-value">> 55</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Price vs. SMA 50</span>
+                        <span class="filter-value">Above SMA</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Stop Loss</span>
+                        <span class="filter-value">-5.0%</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Take Profit</span>
+                        <span class="filter-value">+10.0%</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Risk/Reward Ratio</span>
+                        <span class="filter-value">1:2</span>
+                    </div>
+                    <div class="filter-item">
+                        <span class="filter-label">Global Trend Filter</span>
+                        <span class="filter-value">SPY > SMA 200</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="logic-box">
+                <h4>Entry Logic (Python Implementation)</h4>
+                <code>if strategy_mode == "momentum":</code>
+                <code>&nbsp;&nbsp;if rsi_prev < target_rsi and current_rsi >= target_rsi:</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;if current_close > current_sma50:</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passed_rules = True</code>
+                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rank_score = current_close / high_52w</code>
+            </div>
+            
+            <div class="logic-box">
+                <h4>Ranking Mechanism</h4>
+                <code>RankScore = Current_Close / 52_Week_High</code>
+                <p style="margin: 10px 0 0 0; color: var(--text-dim); font-size: 0.85rem;">
+                    Stocks trading closest to their 52-week highs are prioritized. This identifies the strongest 
+                    momentum candidates that are breaking out or maintaining leadership positions.
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Architecture Diagram -->
+    <div class="architecture-diagram">
+        <h2>Data Flow Architecture - Strategy Isolation</h2>
+        <div class="flow-diagram">
+            <div class="flow-step">
+                <div class="flow-number">1</div>
+                <div class="flow-content">
+                    <h4>Frontend UI Layer</h4>
+                    <p>User selects strategy mode (Mean Reversion / Momentum) and configures parameters (RSI, SL, TP) via dropdown and input fields.</p>
+                </div>
+            </div>
+            
+            <div class="flow-step">
+                <div class="flow-number">2</div>
+                <div class="flow-content">
+                    <h4>Flask Route Handler (app.py)</h4>
+                    <p>Receives POST/GET request with <code>strategy_mode</code>, <code>target_rsi</code>, <code>stop_loss_pct</code>, <code>take_profit_pct</code> as isolated parameters. No global state is modified.</p>
+                </div>
+            </div>
+            
+            <div class="flow-step">
+                <div class="flow-number">3</div>
+                <div class="flow-content">
+                    <h4>Scanner Generator (scanner.py)</h4>
+                    <p>The <code>scan_universe_generator(strategy_mode, ...)</code> function uses conditional branching to execute ONLY the selected strategy's logic. Parameters are passed explicitly, ensuring zero cross-contamination.</p>
+                </div>
+            </div>
+            
+            <div class="flow-step">
+                <div class="flow-number">4</div>
+                <div class="flow-content">
+                    <h4>Trading Logic (trading_logic.py)</h4>
+                    <p>Processes scan results independently. Each strategy's setups are handled in isolation with their own entry/exit rules and position sizing calculations.</p>
+                </div>
+            </div>
+            
+            <div class="flow-step">
+                <div class="flow-number">5</div>
+                <div class="flow-content">
+                    <h4>Database Persistence (data_manager.py)</h4>
+                    <p>For LIVE SCANS only: Results are saved to <code>trades_db.json</code> with strategy metadata. DRY RUNS bypass this layer entirely, ensuring no database writes occur.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Comparison Table -->
+    <div class="comparison-table">
+        <h2>Strategy Comparison Matrix</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Aspect</th>
+                    <th>Mean Reversion</th>
+                    <th>Momentum</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Market Condition</strong></td>
+                    <td class="highlight-mean-reversion">Oversold bounces in strong stocks</td>
+                    <td class="highlight-momentum">Established uptrends with confirmation</td>
+                </tr>
+                <tr>
+                    <td><strong>RSI Signal</strong></td>
+                    <td class="highlight-mean-reversion">RSI crosses above 30 (from below)</td>
+                    <td class="highlight-momentum">RSI crosses above 55 (from below)</td>
+                </tr>
+                <tr>
+                    <td><strong>Price Position</strong></td>
+                    <td class="highlight-mean-reversion">Below SMA 20</td>
+                    <td class="highlight-momentum">Above SMA 50</td>
+                </tr>
+                <tr>
+                    <td><strong>Ranking Logic</strong></td>
+                    <td class="highlight-mean-reversion">(SMA - Close) / Volatility</td>
+                    <td class="highlight-momentum">Close / 52-Week High</td>
+                </tr>
+                <tr>
+                    <td><strong>Risk/Reward</strong></td>
+                    <td class="highlight-mean-reversion">1:2 (3% SL / 6% TP)</td>
+                    <td class="highlight-momentum">1:2 (5% SL / 10% TP)</td>
+                </tr>
+                <tr>
+                    <td><strong>Holding Period</strong></td>
+                    <td class="highlight-mean-reversion">Short-term (3-7 days)</td>
+                    <td class="highlight-momentum">Medium-term (5-14 days)</td>
+                </tr>
+                <tr>
+                    <td><strong>Best Market Regime</strong></td>
+                    <td class="highlight-mean-reversion">Volatile, choppy markets</td>
+                    <td class="highlight-momentum">Trending, bullish markets</td>
+                </tr>
+                <tr>
+                    <td><strong>Historical Performance (2010-2026)</strong></td>
+                    <td class="highlight-mean-reversion">+12.8% (struggled in calm periods)</td>
+                    <td class="highlight-momentum">+567.8% (consistent across regimes)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

@@ -21,6 +21,60 @@ UNIVERSE = [
     'XPEV', 'LI', 'NIO', 'FCX', 'NUE', 'CLF', 'AA', 'X', 'SOFI', 'UPST'
 ]
 
+def build_diagnostic_message(stats, strategy_mode, is_spy_bullish, target_rsi):
+    """Build intelligent diagnostic message based on scan statistics"""
+    
+    # Base statistics
+    msg = f"📊 Scan Statistics:\n"
+    msg += f"- Analyzed: {stats['analyzed']}/{stats['total_tickers']} stocks"
+    if stats['download_failed'] > 0:
+        msg += f" ({stats['download_failed']} download failures)"
+    msg += f"\n- RSI crossed {target_rsi}: {stats['rsi_crossed']} stocks\n"
+    
+    if strategy_mode == "momentum":
+        msg += f"- Price above SMA 50: {stats['price_position_ok']} stocks\n"
+    else:
+        msg += f"- Price below SMA 20: {stats['price_position_ok']} stocks\n"
+    
+    msg += f"- Both conditions met: {stats['both_conditions']} stocks"
+    if stats['both_conditions'] == 0:
+        msg += " ❌"
+    else:
+        msg += " ✅"
+    
+    if stats['filtered_earnings'] > 0:
+        msg += f"\n- Filtered by earnings: {stats['filtered_earnings']} stocks ❌"
+    
+    msg += f"\n\n💡 Diagnosis: "
+    
+    # Smart diagnosis
+    if stats['final_setups'] > 0:
+        msg += f"Found {stats['final_setups']} qualifying setups!"
+    elif stats['download_failed'] > 20:
+        msg += "High rate of download failures. API rate limiting issue."
+        msg += "\n📌 Recommendation: Try again in 1 hour."
+    elif stats['filtered_earnings'] > 0 and stats['both_conditions'] > 0:
+        msg += "Strong candidates exist but filtered by upcoming earnings."
+        msg += "\n📌 Recommendation: Wait 1 week for earnings to pass, then re-scan."
+    elif stats['rsi_crossed'] == 0:
+        msg += "No RSI crosses detected. Market is in neutral/sideways mode."
+        msg += f"\n📌 Recommendation: Wait for more volatility or adjust RSI threshold."
+    elif stats['price_position_ok'] == 0:
+        if strategy_mode == "momentum":
+            msg += "No stocks above SMA 50. Market may be weakening."
+            msg += "\n📌 Recommendation: Consider switching to Mean Reversion strategy."
+        else:
+            msg += "No stocks below SMA 20. Market is very strong."
+            msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy (RSI=55)."
+    elif is_spy_bullish and strategy_mode == "mean_reversion":
+        msg += "Market is BULLISH. Mean Reversion setups are rare in strong markets."
+        msg += "\n📌 Recommendation: Stay in cash or switch to Momentum strategy (RSI=55)."
+    else:
+        msg += "No qualifying trades this week."
+        msg += "\n📌 Recommendation: Stay in cash and wait for better setups."
+    
+    return msg
+
 def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, stop_loss_pct=3.0, take_profit_pct=6.0):
     """
     Generator that scans the defined universe for trading setups.
@@ -28,6 +82,18 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
     """
     results = []
     total = len(UNIVERSE)
+    
+    # Initialize diagnostic statistics
+    stats = {
+        "total_tickers": len(UNIVERSE),
+        "analyzed": 0,
+        "download_failed": 0,
+        "rsi_crossed": 0,
+        "price_position_ok": 0,
+        "both_conditions": 0,
+        "filtered_earnings": 0,
+        "final_setups": 0
+    }
     
     yield {"progress": 0, "message": "Checking Global Market Trend (SPY SMA 200)..."}
     
@@ -58,11 +124,15 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
             # We download 365 days of history to compute the 52-week high accurately for momentum
             df = stock_api.get_historical_data(ticker, days=365)
             if df is None or len(df) < 20:
+                stats["download_failed"] += 1
                 yield {"progress": progress, "message": f"Failed to download {ticker}: Rate Limited"}
                 continue
         except Exception as e:
+            stats["download_failed"] += 1
             yield {"progress": progress, "message": f"Failed to download {ticker}: {str(e)}"}
             continue
+        
+        stats["analyzed"] += 1
             
         # Technical Indicators
         df['SMA_20'] = df['Close'].rolling(window=20).mean()
@@ -87,16 +157,36 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
         sl = current_close * (1.0 - (stop_loss_pct / 100.0))
         rr = take_profit_pct / stop_loss_pct if stop_loss_pct > 0 else 0.0
         
+        # Track conditions separately for diagnostics
+        rsi_crossed = False
+        price_position_ok = False
+        
         if strategy_mode == "momentum":
             # Condition: RSI crosses above target_rsi (default 60) and Close > SMA 50
             if not np.isnan(current_sma50) and not np.isnan(current_rsi) and not np.isnan(rsi_prev):
-                if rsi_prev < target_rsi and current_rsi >= target_rsi and current_close > current_sma50:
+                rsi_crossed = (rsi_prev < target_rsi and current_rsi >= target_rsi)
+                price_position_ok = (current_close > current_sma50)
+                
+                if rsi_crossed:
+                    stats["rsi_crossed"] += 1
+                if price_position_ok:
+                    stats["price_position_ok"] += 1
+                if rsi_crossed and price_position_ok:
+                    stats["both_conditions"] += 1
                     passed_rules = True
                     rank_score = current_close / high52w if high52w > 0 else 0.0
         else: # mean_reversion
             # Smart Reversal Trigger: RSI was below target yesterday, and crossed above it today
             if not np.isnan(current_sma) and not np.isnan(current_rsi) and not np.isnan(rsi_prev):
-                if rsi_prev < target_rsi and current_rsi >= target_rsi and current_close < current_sma:
+                rsi_crossed = (rsi_prev < target_rsi and current_rsi >= target_rsi)
+                price_position_ok = (current_close < current_sma)
+                
+                if rsi_crossed:
+                    stats["rsi_crossed"] += 1
+                if price_position_ok:
+                    stats["price_position_ok"] += 1
+                if rsi_crossed and price_position_ok:
+                    stats["both_conditions"] += 1
                     passed_rules = True
                     dist_pct = (current_sma - current_close) / current_close
                     rank_score = dist_pct / current_vol if current_vol > 0 else 0.0
@@ -111,12 +201,15 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
                 
                 days_to_earnings = (next_earnings - datetime.now()).days
                 if 0 <= days_to_earnings <= 7:
+                    stats["filtered_earnings"] += 1
                     if 0 <= days_to_earnings <= 2:
                         yield {"progress": progress, "message": f"Skipped {ticker}: Upcoming earnings"}
                     else:
                         yield {"progress": progress, "message": f"Skipping {ticker} due to earnings in {days_to_earnings} days"}
                     continue
             
+            # Passed all filters!
+            stats["final_setups"] += 1
             results.append({
                 'Ticker': ticker,
                 'Close': current_close,
@@ -135,7 +228,12 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
     results.sort(key=lambda x: x['RankScore'], reverse=True)
     top_setups = results[:3]
     
-    yield {"progress": 100, "message": f"Scan complete! Found {len(results)} setups. Top 3: {', '.join([x['Ticker'] for x in top_setups])}", "complete": True, "top_setups": top_setups}
+    # Use smart diagnostic message when no setups found
+    if len(results) == 0:
+        diagnostic_msg = build_diagnostic_message(stats, strategy_mode, is_spy_bullish, target_rsi)
+        yield {"progress": 100, "message": f"Scan complete! Found 0 setups.\n\n{diagnostic_msg}", "complete": True, "top_setups": []}
+    else:
+        yield {"progress": 100, "message": f"Scan complete! Found {len(results)} setups. Top 3: {', '.join([x['Ticker'] for x in top_setups])}", "complete": True, "top_setups": top_setups}
 
 import sys
 

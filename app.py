@@ -353,6 +353,11 @@ def market_status():
 def structure():
     return ui_generator.generate_structure_html()
 
+@app.route('/under-the-hood')
+def under_the_hood():
+    with open("under_the_hood.html", "r", encoding="utf-8") as f:
+        return f.read()
+
 @app.route('/api/backtest', methods=['POST'])
 def api_backtest():
     import backtester
