@@ -67,9 +67,9 @@ DEPOSIT_FORM_HTML = """
                 document.getElementById('live-sl').value = '3.0';
                 document.getElementById('live-tp').value = '6.0';
             } else if (mode === 'momentum') {
-                document.getElementById('live-rsi').value = '60';
+                document.getElementById('live-rsi').value = '55';
                 document.getElementById('live-sl').value = '5.0';
-                document.getElementById('live-tp').value = '12.0';
+                document.getElementById('live-tp').value = '10.0';
             }
         });
     </script>
