@@ -2,14 +2,96 @@ from datetime import datetime
 import stock_api
 import finance_utils
 
-def update_portfolio_status(trades):
+def check_intraday_stop_loss_take_profit(trades):
     """
-    Updates the prices and statuses of all active trades.
+    Checks if any active trades hit stop loss or take profit using 5-minute candles.
+    This provides more accurate detection than daily candles.
     Inputs: trades (list)
     Output: list (updated trades)
     """
+    for trade in trades:
+        if trade.get("status") not in ["ACTIVE", "REVIEW"]:
+            continue
+            
+        ticker = trade["ticker"]
+        entry_timestamp = trade.get("timestamp")
+        
+        if not entry_timestamp:
+            continue
+            
+        try:
+            # Parse entry date (use date only, not time)
+            entry_date = datetime.strptime(entry_timestamp.split()[0], "%Y-%m-%d")
+            days_since_entry = (datetime.now() - entry_date).days
+            
+            # yfinance provides 5-minute data for up to 60 days
+            # If trade is older, skip intraday check (will be checked by daily candles)
+            if days_since_entry > 60:
+                continue
+                
+            # Download 5-minute candles - get extra days to ensure we have data
+            # Use at least 5 days to ensure we capture the entry day and subsequent days
+            period = f"{max(5, min(days_since_entry + 2, 60))}d"
+            df = stock_api.get_intraday_data(ticker, period=period, interval="5m")
+            
+            if df is None or df.empty or "High" not in df.columns or "Low" not in df.columns:
+                continue
+            
+            # Filter candles to only those on or after entry date (not strict time comparison)
+            # This ensures we catch any intraday movements on the entry day itself
+            df = df[df.index.date >= entry_date.date()]
+            
+            if df.empty:
+                continue
+            
+            stop_loss = trade.get("stop_loss")
+            take_profit = trade.get("take_profit")
+            
+            # Check each candle for stop loss or take profit hit
+            for idx, row in df.iterrows():
+                candle_high = float(row["High"])
+                candle_low = float(row["Low"])
+                
+                # Check if take profit was hit (price went above TP)
+                if take_profit and candle_high >= take_profit:
+                    trade["status"] = "HIT_TP"
+                    trade["exit_price"] = take_profit
+                    trade["exit_timestamp"] = idx.strftime("%Y-%m-%d %H:%M:%S")
+                    trade["current_price"] = take_profit
+                    trade["pnl_pct"] = finance_utils.calculate_pnl_pct(take_profit, trade["entry_price"])
+                    print(f"✅ {ticker} hit Take Profit at {trade['exit_timestamp']}")
+                    break
+                    
+                # Check if stop loss was hit (price went below SL)
+                if stop_loss and candle_low <= stop_loss:
+                    trade["status"] = "HIT_SL"
+                    trade["exit_price"] = stop_loss
+                    trade["exit_timestamp"] = idx.strftime("%Y-%m-%d %H:%M:%S")
+                    trade["current_price"] = stop_loss
+                    trade["pnl_pct"] = finance_utils.calculate_pnl_pct(stop_loss, trade["entry_price"])
+                    print(f"🛑 {ticker} hit Stop Loss at {trade['exit_timestamp']}")
+                    break
+                    
+        except Exception as e:
+            print(f"Error checking intraday data for {ticker}: {e}")
+            continue
+            
+    return trades
+
+def update_portfolio_status(trades):
+    """
+    Updates the prices and statuses of all active trades.
+    First checks intraday 5-minute candles for precise SL/TP detection,
+    then updates current prices with daily data.
+    Inputs: trades (list)
+    Output: list (updated trades)
+    """
+    # First, check intraday candles for precise stop loss / take profit detection
+    trades = check_intraday_stop_loss_take_profit(trades)
+    
     updated_any = False
     for trade in trades:
+        # Skip trades that were already closed by intraday check
         if trade.get("status") in ["ACTIVE", "REVIEW"]:
             ticker = trade["ticker"]
             df = stock_api.get_live_data(ticker)

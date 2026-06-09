@@ -63,3 +63,24 @@ def get_historical_data(ticker, days=180):
     except Exception as e:
         print(f"Error fetching historical data for {ticker}: {e}")
         return None
+
+def get_intraday_data(ticker, period="5d", interval="5m"):
+    """
+    Downloads intraday data (5-minute candles) for a ticker from yfinance.
+    Used for precise stop loss / take profit detection.
+    Inputs: ticker (str), period (str), interval (str)
+    Output: pd.DataFrame or None
+    
+    Note: yfinance provides 5-minute data for up to 60 days back.
+    """
+    try:
+        df = yf.download(ticker, period=period, interval=interval, progress=False)
+        if df is None or df.empty:
+            return None
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.loc[:, ~df.columns.duplicated()]
+        return df
+    except Exception as e:
+        print(f"Error fetching intraday data for {ticker}: {e}")
+        return None
