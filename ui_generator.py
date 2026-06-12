@@ -279,7 +279,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             {{clearance_button}}
             <button onclick="openDryRunModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; background: transparent;">Dry Run Scanner</button>
             <a href="/under-the-hood" class="btn btn-secondary" style="border-color: #2196F3; color: #2196F3;">Under the Hood</a>
-            <a href="/structure" class="btn btn-secondary" style="border-color: var(--accent); color: var(--accent);">Architecture Map</a>
             <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
             <a href="/refresh-tracker" class="btn btn-secondary">Refresh Prices</a>
         </div>
@@ -358,30 +357,37 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Inputs and Stats -->
             <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
                 <div style="margin-bottom: 15px; text-align: left;">
-                    <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Strategy Mode:</label>
-                    <select id="backtest-strategy-mode" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
-                        <option value="mean_reversion">Mean Reversion</option>
-                        <option value="momentum">Momentum</option>
-                    </select>
-                </div>
-                <div style="margin-bottom: 15px; text-align: left;">
                     <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Initial Capital (USD):</label>
                     <input type="number" id="backtest-capital" value="10000" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
                 </div>
                 <div style="margin-bottom: 15px; text-align: left; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                     <div>
                         <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Target RSI:</label>
-                        <input type="number" id="backtest-rsi" value="30" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                        <input type="number" id="backtest-rsi" value="55" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
                     </div>
                     <div>
                         <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Stop Loss %:</label>
-                        <input type="number" id="backtest-sl" value="3.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                        <input type="number" id="backtest-sl" value="5.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
                     </div>
                     <div>
                         <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Take Profit %:</label>
-                        <input type="number" id="backtest-tp" value="6.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
+                        <input type="number" id="backtest-tp" value="10.0" step="0.1" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 8px; border-radius: 8px; width: 100%; font-size: 0.9rem; box-sizing: border-box;">
                     </div>
                 </div>
+                
+                <!-- Monte Carlo Toggle -->
+                <div style="margin-top: 15px; margin-bottom: 15px; padding: 12px; background: #0a0a0a; border-radius: 8px; border: 1px solid #333;">
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 0.9rem;">
+                        <input type="checkbox" id="backtest-monte-carlo" checked style="margin-left: 10px; width: 18px; height: 18px; cursor: pointer;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; color: #39FF14;">🎲 Enhanced Monte Carlo Simulation</div>
+                            <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">
+                                Uses probabilistic intraday path simulation for more accurate SL/TP detection. Recommended for realistic results.
+                            </div>
+                        </div>
+                    </label>
+                </div>
+                
                 <button onclick="runBacktest()" id="backtest-btn" class="btn btn-primary" style="width: 100%; background: #39FF14; color: black; font-weight: bold; border: none; padding: 12px; border-radius: 8px;">Run 5-Year Backtest</button>
                 
                 <!-- Backtest Loader -->
@@ -556,13 +562,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const rsiInput = document.getElementById('backtest-rsi');
             const slInput = document.getElementById('backtest-sl');
             const tpInput = document.getElementById('backtest-tp');
-            const modeInput = document.getElementById('backtest-strategy-mode');
-            
             const capital = parseFloat(capitalInput.value) || 10000.0;
-            const targetRsi = parseFloat(rsiInput.value) || 30.0;
-            const stopLossPct = parseFloat(slInput.value) || 3.0;
-            const takeProfitPct = parseFloat(tpInput.value) || 6.0;
-            const strategyMode = modeInput.value;
+            const targetRsi = parseFloat(rsiInput.value) || 55.0;
+            const stopLossPct = parseFloat(slInput.value) || 5.0;
+            const takeProfitPct = parseFloat(tpInput.value) || 10.0;
+            const strategyMode = 'momentum';
             
             const btn = document.getElementById('backtest-btn');
             const loader = document.getElementById('backtest-loader');
@@ -578,6 +582,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             chartContainer.style.display = 'none';
             
             try {
+                const useMonteCarlo = document.getElementById('backtest-monte-carlo') ? document.getElementById('backtest-monte-carlo').checked : true;
+                
                 const response = await fetch('/api/backtest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -586,7 +592,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         target_rsi: targetRsi,
                         stop_loss_pct: stopLossPct,
                         take_profit_pct: takeProfitPct,
-                        strategy_mode: strategyMode
+                        strategy_mode: strategyMode,
+                        use_monte_carlo: useMonteCarlo
                     })
                 });
                 const data = await response.json();
@@ -771,20 +778,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         // Dry Run Scanner Logic
         let dryRunEventSource = null;
 
-        // Auto-update parameter defaults when strategy mode changes
-        function updateDryRunDefaults() {
-            const mode = document.getElementById('dryrun-strategy-mode').value;
-            if (mode === 'mean_reversion') {
-                document.getElementById('dryrun-rsi').value = '30';
-                document.getElementById('dryrun-sl').value = '3.0';
-                document.getElementById('dryrun-tp').value = '6.0';
-            } else if (mode === 'momentum') {
-                document.getElementById('dryrun-rsi').value = '55';
-                document.getElementById('dryrun-sl').value = '5.0';
-                document.getElementById('dryrun-tp').value = '10.0';
-            }
-        }
-
         window.openDryRunModal = function() {
             document.getElementById('dryRunModal').style.display = 'flex';
             document.getElementById('dryRunProgressSection').style.display = 'block';
@@ -795,12 +788,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('dryRunLog').innerHTML = '<div style="color: #555;">[System] Ready to start dry run...</div>';
             document.getElementById('dryRunStartBtn').disabled = false;
             document.getElementById('dryRunStartBtn').style.opacity = '1';
-            
-            // Attach event listener for strategy mode changes
-            const strategySelect = document.getElementById('dryrun-strategy-mode');
-            if (strategySelect) {
-                strategySelect.onchange = updateDryRunDefaults;
-            }
         };
 
         window.closeDryRunModal = function() {
@@ -834,13 +821,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('dryRunStartBtn').disabled = true;
             document.getElementById('dryRunStartBtn').style.opacity = '0.5';
             
-            const strategyMode = document.getElementById('dryrun-strategy-mode').value;
             const targetRsi = document.getElementById('dryrun-rsi').value;
             const stopLossPct = document.getElementById('dryrun-sl').value;
             const takeProfitPct = document.getElementById('dryrun-tp').value;
             
             appendDryRunLog('[System] Connecting to dry run stream...');
-            dryRunEventSource = new EventSource(`/api/dry-run-stream?strategy_mode=${strategyMode}&target_rsi=${targetRsi}&stop_loss_pct=${stopLossPct}&take_profit_pct=${takeProfitPct}`);
+            dryRunEventSource = new EventSource(`/api/dry-run-stream?target_rsi=${targetRsi}&stop_loss_pct=${stopLossPct}&take_profit_pct=${takeProfitPct}`);
 
             dryRunEventSource.onmessage = function(event) {
                 const data = JSON.parse(event.data);
@@ -908,13 +894,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Strategy Configuration Section -->
             <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px;">
                 <h3 style="margin-top: 0; color: white; font-size: 1rem;">Strategy Configuration</h3>
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Strategy Mode:</label>
-                    <select id="dryrun-strategy-mode" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
-                        <option value="mean_reversion">Mean Reversion</option>
-                        <option value="momentum" selected>Momentum</option>
-                    </select>
-                </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
                     <div>
                         <label style="display: block; color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 6px;">Target RSI:</label>

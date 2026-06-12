@@ -14,7 +14,6 @@
             --neon-green: #39FF14;
             --accent: #ff5252;
             --momentum-color: #2196F3;
-            --mean-reversion-color: #f39c12;
         }
         
         body {
@@ -67,15 +66,12 @@
         .strategy-container {
             width: 100%;
             max-width: 1400px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
             margin-bottom: 40px;
         }
         
         .strategy-block {
             background: var(--card-bg);
-            border: 2px solid var(--border);
+            border: 2px solid var(--momentum-color);
             border-radius: 16px;
             padding: 30px;
             position: relative;
@@ -89,15 +85,7 @@
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg, transparent, var(--strategy-color), transparent);
-        }
-        
-        .strategy-block.mean-reversion {
-            --strategy-color: var(--mean-reversion-color);
-        }
-        
-        .strategy-block.momentum {
-            --strategy-color: var(--momentum-color);
+            background: linear-gradient(90deg, transparent, var(--momentum-color), transparent);
         }
         
         .strategy-header {
@@ -120,7 +108,7 @@
         .strategy-title h2 {
             margin: 0;
             font-size: 1.5rem;
-            color: var(--strategy-color);
+            color: var(--momentum-color);
         }
         
         .strategy-title p {
@@ -164,14 +152,14 @@
         
         .filter-value {
             font-weight: 700;
-            color: var(--strategy-color);
+            color: var(--momentum-color);
             font-size: 0.95rem;
         }
         
         .logic-box {
             background: #0d0d0d;
             border: 1px solid #333;
-            border-left: 3px solid var(--strategy-color);
+            border-left: 3px solid var(--momentum-color);
             padding: 15px;
             border-radius: 8px;
             margin-top: 15px;
@@ -192,10 +180,10 @@
             font-size: 0.85rem;
             color: #e2e2e2;
             margin: 5px 0;
-            border-left: 2px solid var(--strategy-color);
+            border-left: 2px solid var(--momentum-color);
         }
         
-        .isolation-status {
+        .production-status {
             width: 100%;
             max-width: 1400px;
             background: var(--card-bg);
@@ -205,7 +193,7 @@
             margin-bottom: 40px;
         }
         
-        .isolation-status h2 {
+        .production-status h2 {
             margin: 0 0 20px 0;
             color: var(--neon-green);
             display: flex;
@@ -303,7 +291,7 @@
             font-size: 0.85rem;
         }
         
-        .comparison-table {
+        .performance-table {
             width: 100%;
             max-width: 1400px;
             background: var(--card-bg);
@@ -313,7 +301,7 @@
             margin-top: 40px;
         }
         
-        .comparison-table h2 {
+        .performance-table h2 {
             margin: 0 0 20px 0;
             color: var(--text);
         }
@@ -339,11 +327,6 @@
             font-size: 0.9rem;
         }
         
-        .highlight-mean-reversion {
-            color: var(--mean-reversion-color);
-            font-weight: 700;
-        }
-        
         .highlight-momentum {
             color: var(--momentum-color);
             font-weight: 700;
@@ -352,110 +335,49 @@
 </head>
 <body>
     <div class="header">
-        <h1>🔧 Under the Hood - Strategy Architecture</h1>
+        <h1>🔧 Under the Hood - Production Strategy</h1>
         <a href="/" class="btn">← Back to Dashboard</a>
     </div>
     
-    <!-- Isolation Status Section -->
-    <div class="isolation-status">
+    <!-- Production Status Section -->
+    <div class="production-status">
         <h2>
-            <span>✅</span>
-            Backend Isolation Verification
+            <span>🏆</span>
+            Production Strategy: Momentum Scenario 3
         </h2>
         <div class="status-grid">
             <div class="status-card">
-                <div class="icon">🔒</div>
-                <div class="label">Strategy Decoupling</div>
-                <div class="value">ISOLATED</div>
+                <div class="icon">📈</div>
+                <div class="label">Strategy Mode</div>
+                <div class="value">MOMENTUM</div>
             </div>
             <div class="status-card">
-                <div class="icon">🧪</div>
-                <div class="label">Parameter Contamination</div>
-                <div class="value">NONE</div>
+                <div class="icon">🎯</div>
+                <div class="label">Target RSI</div>
+                <div class="value">55</div>
             </div>
             <div class="status-card">
-                <div class="icon">⚡</div>
-                <div class="label">Execution Tracks</div>
-                <div class="value">INDEPENDENT</div>
+                <div class="icon">🛡️</div>
+                <div class="label">Risk Management</div>
+                <div class="value">5% SL / 10% TP</div>
             </div>
         </div>
         <p style="margin-top: 20px; color: var(--text-dim); line-height: 1.6;">
-            <strong>Verification Summary:</strong> Both strategies operate on completely separate execution tracks. 
-            The <code>scan_universe_generator()</code> function accepts <code>strategy_mode</code> as a parameter and uses 
-            conditional branching to ensure that Mean Reversion and Momentum filters never cross-contaminate. 
-            Each DRY RUN or LIVE SCAN passes its own isolated parameters through the entire pipeline 
-            (Frontend → app.py → scanner.py → trading_logic.py) without affecting global state.
+            <strong>Production Decision:</strong> After extensive backtesting across two distinct market eras (Calm 2010-2020 and Chaos 2021-2026), 
+            the Momentum Scenario 3 strategy was selected for production deployment. This strategy achieved a remarkable <strong>+567.8% total return</strong> 
+            over the full 16-year horizon with a stable <strong>~43% win rate</strong> across both market regimes. The Mean Reversion strategy has been 
+            deprecated due to poor performance in volatile markets (-30.93% in recent period).
         </p>
     </div>
     
-    <!-- Strategy Blocks -->
+    <!-- Strategy Block -->
     <div class="strategy-container">
-        <!-- Mean Reversion Strategy -->
-        <div class="strategy-block mean-reversion">
-            <div class="strategy-header">
-                <div class="strategy-icon">📉</div>
-                <div class="strategy-title">
-                    <h2>Mean Reversion Strategy</h2>
-                    <p>Catching oversold bounces in fundamentally strong stocks</p>
-                </div>
-            </div>
-            
-            <div class="filter-section">
-                <h3>Active Filters & Criteria</h3>
-                <div class="filter-grid">
-                    <div class="filter-item">
-                        <span class="filter-label">Target RSI Threshold</span>
-                        <span class="filter-value">< 30</span>
-                    </div>
-                    <div class="filter-item">
-                        <span class="filter-label">Price vs. SMA 20</span>
-                        <span class="filter-value">Below SMA</span>
-                    </div>
-                    <div class="filter-item">
-                        <span class="filter-label">Stop Loss</span>
-                        <span class="filter-value">-3.0%</span>
-                    </div>
-                    <div class="filter-item">
-                        <span class="filter-label">Take Profit</span>
-                        <span class="filter-value">+6.0%</span>
-                    </div>
-                    <div class="filter-item">
-                        <span class="filter-label">Risk/Reward Ratio</span>
-                        <span class="filter-value">1:2</span>
-                    </div>
-                    <div class="filter-item">
-                        <span class="filter-label">Global Trend Filter</span>
-                        <span class="filter-value">SPY > SMA 200</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="logic-box">
-                <h4>Entry Logic (Python Implementation)</h4>
-                <code>if strategy_mode == "mean_reversion":</code>
-                <code>&nbsp;&nbsp;if rsi_prev < target_rsi and current_rsi >= target_rsi:</code>
-                <code>&nbsp;&nbsp;&nbsp;&nbsp;if current_close < current_sma:</code>
-                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;passed_rules = True</code>
-                <code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rank_score = (sma - close) / volatility</code>
-            </div>
-            
-            <div class="logic-box">
-                <h4>Ranking Mechanism</h4>
-                <code>RankScore = (SMA_20 - Close) / Volatility</code>
-                <p style="margin: 10px 0 0 0; color: var(--text-dim); font-size: 0.85rem;">
-                    Stocks with the largest distance from their mean (normalized by volatility) are prioritized. 
-                    This creates a Z-Score-like ranking that identifies the most extreme oversold conditions.
-                </p>
-            </div>
-        </div>
-        
-        <!-- Momentum Strategy -->
-        <div class="strategy-block momentum">
+        <div class="strategy-block">
             <div class="strategy-header">
                 <div class="strategy-icon">📈</div>
                 <div class="strategy-title">
-                    <h2>Momentum Strategy</h2>
-                    <p>Riding established uptrends with RSI confirmation</p>
+                    <h2>Momentum Strategy (Production)</h2>
+                    <p>Riding established uptrends with RSI confirmation - The Winner</p>
                 </div>
             </div>
             
@@ -511,13 +433,13 @@
     
     <!-- Architecture Diagram -->
     <div class="architecture-diagram">
-        <h2>Data Flow Architecture - Strategy Isolation</h2>
+        <h2>Data Flow Architecture - Production Pipeline</h2>
         <div class="flow-diagram">
             <div class="flow-step">
                 <div class="flow-number">1</div>
                 <div class="flow-content">
                     <h4>Frontend UI Layer</h4>
-                    <p>User selects strategy mode (Mean Reversion / Momentum) and configures parameters (RSI, SL, TP) via dropdown and input fields.</p>
+                    <p>User configures momentum parameters (RSI=55, SL=5%, TP=10%) via input fields. Strategy mode is fixed to "momentum" in production.</p>
                 </div>
             </div>
             
@@ -525,7 +447,7 @@
                 <div class="flow-number">2</div>
                 <div class="flow-content">
                     <h4>Flask Route Handler (app.py)</h4>
-                    <p>Receives POST/GET request with <code>strategy_mode</code>, <code>target_rsi</code>, <code>stop_loss_pct</code>, <code>take_profit_pct</code> as isolated parameters. No global state is modified.</p>
+                    <p>Receives POST/GET request with <code>target_rsi</code>, <code>stop_loss_pct</code>, <code>take_profit_pct</code> parameters. Strategy mode is hardcoded to "momentum".</p>
                 </div>
             </div>
             
@@ -533,7 +455,7 @@
                 <div class="flow-number">3</div>
                 <div class="flow-content">
                     <h4>Scanner Generator (scanner.py)</h4>
-                    <p>The <code>scan_universe_generator(strategy_mode, ...)</code> function uses conditional branching to execute ONLY the selected strategy's logic. Parameters are passed explicitly, ensuring zero cross-contamination.</p>
+                    <p>The <code>scan_universe_generator(strategy_mode='momentum', ...)</code> function executes momentum-specific logic with RSI cross above 55 and price above SMA 50.</p>
                 </div>
             </div>
             
@@ -541,7 +463,7 @@
                 <div class="flow-number">4</div>
                 <div class="flow-content">
                     <h4>Trading Logic (trading_logic.py)</h4>
-                    <p>Processes scan results independently. Each strategy's setups are handled in isolation with their own entry/exit rules and position sizing calculations.</p>
+                    <p>Processes scan results with momentum-specific entry/exit rules and position sizing calculations based on 1:2 risk/reward ratio.</p>
                 </div>
             </div>
             
@@ -549,63 +471,58 @@
                 <div class="flow-number">5</div>
                 <div class="flow-content">
                     <h4>Database Persistence (data_manager.py)</h4>
-                    <p>For LIVE SCANS only: Results are saved to <code>trades_db.json</code> with strategy metadata. DRY RUNS bypass this layer entirely, ensuring no database writes occur.</p>
+                    <p>For LIVE SCANS only: Results are saved to <code>trades_db.json</code> with strategy metadata. DRY RUNS bypass this layer entirely.</p>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- Comparison Table -->
-    <div class="comparison-table">
-        <h2>Strategy Comparison Matrix</h2>
+    <!-- Performance Table -->
+    <div class="performance-table">
+        <h2>Historical Performance - Momentum Scenario 3</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Aspect</th>
-                    <th>Mean Reversion</th>
-                    <th>Momentum</th>
+                    <th>Metric</th>
+                    <th>Chaos Era (2021-2026)</th>
+                    <th>Calm Era (2010-2020)</th>
+                    <th>Full Horizon (2010-2026)</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td><strong>Market Condition</strong></td>
-                    <td class="highlight-mean-reversion">Oversold bounces in strong stocks</td>
-                    <td class="highlight-momentum">Established uptrends with confirmation</td>
+                    <td><strong>Total Return</strong></td>
+                    <td class="highlight-momentum">+100.57%</td>
+                    <td class="highlight-momentum">+232.78%</td>
+                    <td class="highlight-momentum">+567.8%</td>
                 </tr>
                 <tr>
-                    <td><strong>RSI Signal</strong></td>
-                    <td class="highlight-mean-reversion">RSI crosses above 30 (from below)</td>
-                    <td class="highlight-momentum">RSI crosses above 55 (from below)</td>
+                    <td><strong>Win Rate</strong></td>
+                    <td class="highlight-momentum">43.1%</td>
+                    <td class="highlight-momentum">43.6%</td>
+                    <td class="highlight-momentum">~43.3%</td>
                 </tr>
                 <tr>
-                    <td><strong>Price Position</strong></td>
-                    <td class="highlight-mean-reversion">Below SMA 20</td>
-                    <td class="highlight-momentum">Above SMA 50</td>
-                </tr>
-                <tr>
-                    <td><strong>Ranking Logic</strong></td>
-                    <td class="highlight-mean-reversion">(SMA - Close) / Volatility</td>
-                    <td class="highlight-momentum">Close / 52-Week High</td>
+                    <td><strong>Max Drawdown</strong></td>
+                    <td style="color: var(--accent);">-25.4%</td>
+                    <td style="color: var(--accent);">-22.0%</td>
+                    <td style="color: var(--accent);">-25.4%</td>
                 </tr>
                 <tr>
                     <td><strong>Risk/Reward</strong></td>
-                    <td class="highlight-mean-reversion">1:2 (3% SL / 6% TP)</td>
+                    <td class="highlight-momentum">1:2 (5% SL / 10% TP)</td>
+                    <td class="highlight-momentum">1:2 (5% SL / 10% TP)</td>
                     <td class="highlight-momentum">1:2 (5% SL / 10% TP)</td>
                 </tr>
                 <tr>
-                    <td><strong>Holding Period</strong></td>
-                    <td class="highlight-mean-reversion">Short-term (3-7 days)</td>
-                    <td class="highlight-momentum">Medium-term (5-14 days)</td>
+                    <td><strong>Market Regime</strong></td>
+                    <td>Volatile, choppy, high inflation</td>
+                    <td>Calm, bullish, low volatility</td>
+                    <td>Mixed conditions</td>
                 </tr>
                 <tr>
-                    <td><strong>Best Market Regime</strong></td>
-                    <td class="highlight-mean-reversion">Volatile, choppy markets</td>
-                    <td class="highlight-momentum">Trending, bullish markets</td>
-                </tr>
-                <tr>
-                    <td><strong>Historical Performance (2010-2026)</strong></td>
-                    <td class="highlight-mean-reversion">+12.8% (struggled in calm periods)</td>
-                    <td class="highlight-momentum">+567.8% (consistent across regimes)</td>
+                    <td><strong>Key Insight</strong></td>
+                    <td colspan="3">Perfectly stable win rate (~43%) across both market regimes demonstrates exceptional robustness. The strategy captures strong trends right as they form while maintaining tight risk management.</td>
                 </tr>
             </tbody>
         </table>

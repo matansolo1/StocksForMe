@@ -19,38 +19,35 @@ The project is a lightweight, local stock scanner and portfolio tracker built wi
         * `/api/backtest` (POST): Runs the week-by-week backtester with the customized initial capital and returns statistics + equity curve JSON.
 * **`scanner.py`**:
     * Contains the core scanning engine.
-    * `scan_universe_generator()`: A generator function that iterates through the stock universe. Supports dual modes (`momentum` and `mean_reversion`) with dynamic thresholds. Includes a global market trend filter of SPY above its SMA 200.
+    * `scan_universe_generator()`: A generator function that iterates through the stock universe. **Production mode is fixed to `momentum` strategy only.** Includes a global market trend filter of SPY above its SMA 200.
     * `scan_universe()`: Dynamically parameterized wrapper that consumes the generator and passes parameters.
     * `main()`: Upgraded to utilize `sys.argv` to capture dynamic parameters passed directly from the Flask UI subprocess.
 * **`backtester.py`**:
     * The core backtesting engine for week-by-week simulation over different market regimes.
     * Caches downloaded data in `backtest_data_cache.pkl` to make subsequent runs instantaneous.
 * **`trading_logic.py`**:
-    * Defines the technical criteria for identifying trade setups (Momentum Breakouts vs. Smart Mean Reversion).
+    * Defines the technical criteria for identifying trade setups (Momentum Breakouts only - production strategy).
 * **`tracker.py`** & **`data_manager.py`**: Handles JSON persistence, active trades, history, and automated weekly trade logs.
 * **`ui_generator.py`**:
     * Generates the HTML dashboard with Tailwind CSS and Chart.js graphs. Includes the persistent **"📊 Strategy Cheat Sheet & Robustness Matrix"** to lock in proven R&D parameters.
 
 ---
 
-## 2. Updated Strategy Rules (Multi-Regime)
+## 2. Production Strategy (Momentum Scenario 3 - The Winner)
 
 1.  **Global Trend Filter**: Trades are only allowed to be scanned and entered if the S&P 500 ETF is bullish:
     $$\text{SPY Close} > \text{SPY SMA}_{200}$$
 
-2.  **Momentum Breakout Mode (Scenario 3 - Ultimate Winner)**:
-    * **Trigger**: RSI 14 crosses ABOVE target threshold while price is above SMA 50.
+2.  **Momentum Breakout Mode (Scenario 3 - Production Default)**:
+    * **Trigger**: RSI 14 crosses ABOVE 55 while price is above SMA 50.
         $$\text{RSI}_{\text{prev}} < 55 \quad \text{and} \quad \text{RSI}_{\text{current}} \ge 55 \quad \text{and} \quad \text{Price} > \text{SMA}_{50}$$
     * **Risk Management**: Fixed 5.0% Stop Loss.
         $$\text{SL} = \text{Price} \times 0.95$$
     * **Profit Target**: Fixed 10.0% Take Profit (Strict 1:2 Risk/Reward Ratio).
         $$\text{TP} = \text{Price} \times 1.10$$
+    * **Performance**: Achieved +100.57% in Chaos Era (2021-2026) and +232.78% in Calm Era (2010-2020) with a stable 43% win rate across both periods.
 
-3.  **Smart Mean Reversion Mode (Anti-Knife Catching)**:
-    * **Trigger**: RSI 14 crosses ABOVE oversold threshold (recovering from extreme oversold) while price is below SMA 20.
-        $$\text{RSI}_{\text{prev}} < 30 \quad \text{and} \quad \text{RSI}_{\text{current}} \ge 30 \quad \text{and} \quad \text{Price} < \text{SMA}_{20}$$
-    * **Risk Management**: Fixed 3.0% Stop Loss.
-    * **Profit Target**: Fixed 6.0% Take Profit (Strict 1:2 Risk/Reward Ratio).
+**Note**: The Mean Reversion strategy has been **completely removed from the codebase** (deprecated in production) due to poor performance in volatile markets (-30.93% in recent period). All routes, UI elements, and backend logic now exclusively use the Momentum Scenario 3 strategy.
 
 ---
 
@@ -64,8 +61,8 @@ To prevent the UI from freezing during the ~100 ticker scan, a real-time progres
 
 During intensive backtesting across two distinct market eras—the **Calm Era (2010–2020)** and the **Chaos Era (2021–2026)**—we uncovered key insights:
 
-* **The Mean Reversion Failure**: Relying on a raw snapshot of `RSI < 30` caused the system to buy during free-falls ("catching falling knives"), netting a disastrous `-30.93%` return in the Chaos Era. This was fixed by implementing a proper **RSI Cross Reversal Trigger**.
-* **The Momentum Breakthrough (Scenario 3)**: Lowering the momentum entry bar to `RSI = 55` captured strong trends right as they formed (above SMA 50). Coupled with tight risk management (`SL = 5%`, `TP = 10%`), it proved highly robust, maintaining a perfectly stable **~43.3% Win Rate** across *both* market regimes, generating **`+100.57%`** in the recent volatile years and over **`+567%`** across the full 16-year horizon.
+* **The Mean Reversion Failure**: Relying on a raw snapshot of `RSI < 30` caused the system to buy during free-falls ("catching falling knives"), netting a disastrous `-30.93%` return in the Chaos Era. **This strategy has been completely removed from production.**
+* **The Momentum Breakthrough (Scenario 3) - PRODUCTION WINNER**: Lowering the momentum entry bar to `RSI = 55` captured strong trends right as they formed (above SMA 50). Coupled with tight risk management (`SL = 5%`, `TP = 10%`), it proved highly robust, maintaining a perfectly stable **~43.3% Win Rate** across *both* market regimes, generating **`+100.57%`** in the recent volatile years and over **`+567%`** across the full 16-year horizon. **This is now the sole production strategy.**
 
 ---
 

@@ -28,26 +28,18 @@ DEPOSIT_FORM_HTML = """
     <div class="card">
         <h2>Weekly Scan Setup</h2>
         <form action="/execute-scan" method="post">
-            <div style="text-align: left; margin-bottom: 15px;">
-                <label>Strategy Mode:</label>
-                <select id="live-strategy-mode" name="strategy_mode">
-                    <option value="mean_reversion">Mean Reversion</option>
-                    <option value="momentum">Momentum</option>
-                </select>
-            </div>
-            
             <div class="param-grid">
                 <div>
                     <label>Target RSI:</label>
-                    <input type="number" id="live-rsi" name="target_rsi" value="30">
+                    <input type="number" id="live-rsi" name="target_rsi" value="55">
                 </div>
                 <div>
                     <label>Stop Loss %:</label>
-                    <input type="number" id="live-sl" name="stop_loss_pct" value="3.0" step="0.1">
+                    <input type="number" id="live-sl" name="stop_loss_pct" value="5.0" step="0.1">
                 </div>
                 <div>
                     <label>Take Profit %:</label>
-                    <input type="number" id="live-tp" name="take_profit_pct" value="6.0" step="0.1">
+                    <input type="number" id="live-tp" name="take_profit_pct" value="10.0" step="0.1">
                 </div>
             </div>
             
@@ -58,21 +50,6 @@ DEPOSIT_FORM_HTML = """
             <button type="submit" class="btn">Confirm & Run Scan</button>
         </form>
     </div>
-
-    <script>
-        document.getElementById('live-strategy-mode').addEventListener('change', function() {
-            const mode = this.value;
-            if (mode === 'mean_reversion') {
-                document.getElementById('live-rsi').value = '30';
-                document.getElementById('live-sl').value = '3.0';
-                document.getElementById('live-tp').value = '6.0';
-            } else if (mode === 'momentum') {
-                document.getElementById('live-rsi').value = '55';
-                document.getElementById('live-sl').value = '5.0';
-                document.getElementById('live-tp').value = '10.0';
-            }
-        });
-    </script>
 </body>
 </html>
 """
@@ -95,10 +72,10 @@ def run_scan():
 @app.route('/execute-scan', methods=['POST'])
 def execute_scan():
     deposit = float(request.form.get('deposit', 0))
-    strategy_mode = request.form.get('strategy_mode', 'mean_reversion')
-    target_rsi = float(request.form.get('target_rsi', 30.0))
-    stop_loss_pct = float(request.form.get('stop_loss_pct', 3.0))
-    take_profit_pct = float(request.form.get('take_profit_pct', 6.0))
+    strategy_mode = 'momentum'  # Fixed to momentum strategy
+    target_rsi = float(request.form.get('target_rsi', 55.0))
+    stop_loss_pct = float(request.form.get('stop_loss_pct', 5.0))
+    take_profit_pct = float(request.form.get('take_profit_pct', 10.0))
     
     if deposit > 0:
         metadata = data_manager.get_metadata()
@@ -129,7 +106,7 @@ SCANNING_HTML = """
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
     <div class="w-full max-w-2xl bg-[#141414] border border-[#262626] rounded-2xl p-8 shadow-2xl">
         <h2 class="text-2xl font-extrabold mb-2 text-center text-white">Weekly Market Scan</h2>
-        <p class="text-gray-400 text-sm text-center mb-6">Scanning ~100 tickers for Mean Reversion setups...</p>
+        <p class="text-gray-400 text-sm text-center mb-6">Scanning ~100 tickers for Momentum Breakout setups...</p>
         
         <!-- Progress Bar -->
         <div class="mb-6">
@@ -226,10 +203,10 @@ def scan_stream():
     import trading_logic
     import data_manager
     
-    strategy_mode = request.args.get('strategy_mode', 'mean_reversion')
-    target_rsi = float(request.args.get('target_rsi', 30.0))
-    stop_loss_pct = float(request.args.get('stop_loss_pct', 3.0))
-    take_profit_pct = float(request.args.get('take_profit_pct', 6.0))
+    strategy_mode = 'momentum'  # Fixed to momentum strategy
+    target_rsi = float(request.args.get('target_rsi', 55.0))
+    stop_loss_pct = float(request.args.get('stop_loss_pct', 5.0))
+    take_profit_pct = float(request.args.get('take_profit_pct', 10.0))
     
     def generate():
         db = data_manager.load_db()
@@ -298,10 +275,10 @@ def dry_run_stream():
     from flask import Response, request
     import scanner
     
-    strategy_mode = request.args.get('strategy_mode', 'mean_reversion')
-    target_rsi = float(request.args.get('target_rsi', 30.0))
-    stop_loss_pct = float(request.args.get('stop_loss_pct', 3.0))
-    take_profit_pct = float(request.args.get('take_profit_pct', 6.0))
+    strategy_mode = 'momentum'  # Fixed to momentum strategy
+    target_rsi = float(request.args.get('target_rsi', 55.0))
+    stop_loss_pct = float(request.args.get('stop_loss_pct', 5.0))
+    take_profit_pct = float(request.args.get('take_profit_pct', 10.0))
     
     def generate():
         for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
@@ -349,10 +326,6 @@ def market_status():
         "message": message
     })
 
-@app.route('/structure')
-def structure():
-    return ui_generator.generate_structure_html()
-
 @app.route('/under-the-hood')
 def under_the_hood():
     with open("under_the_hood.html", "r", encoding="utf-8") as f:
@@ -363,17 +336,19 @@ def api_backtest():
     import backtester
     data = request.get_json() or {}
     initial_capital = float(data.get('initial_capital', 10000.0))
-    target_rsi = float(data.get('target_rsi', 30.0))
-    stop_loss_pct = float(data.get('stop_loss_pct', 3.0))
-    take_profit_pct = float(data.get('take_profit_pct', 6.0))
-    strategy_mode = data.get('strategy_mode', 'mean_reversion')
+    target_rsi = float(data.get('target_rsi', 55.0))
+    stop_loss_pct = float(data.get('stop_loss_pct', 5.0))
+    take_profit_pct = float(data.get('take_profit_pct', 10.0))
+    strategy_mode = 'momentum'  # Fixed to momentum strategy
+    use_monte_carlo = data.get('use_monte_carlo', True)  # Default to True for enhanced accuracy
     
     results = backtester.run_backtest(
         initial_capital=initial_capital,
         target_rsi=target_rsi,
         stop_loss_pct=stop_loss_pct,
         take_profit_pct=take_profit_pct,
-        strategy_mode=strategy_mode
+        strategy_mode=strategy_mode,
+        use_monte_carlo=use_monte_carlo
     )
     return jsonify(results)
 

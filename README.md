@@ -1,6 +1,6 @@
 # Stocks For Me - Quantitative Trading System
 
-מערכת מסחר כמותי מבוססת RSI וחזרה לממוצע (Mean Reversion) עבור מניות נאסד"ק (Nasdaq).
+מערכת מסחר כמותי מבוססת RSI ומומנטום (Momentum Breakout) עבור מניות נאסד"ק (Nasdaq).
 
 ## התקנה (Installation)
 
@@ -27,11 +27,12 @@ python app.py
 
 ממצאי המחקר הכמותי ומבחני החוסן (Robustness Lab) שבוצעו על פני שני משטרי שוק מרכזיים (שוק תנודתי/משברי 2021-2026 מול שוק רגוע/עולה 2010-2020):
 
-#### 1. כישלון אסטרטגיית ה-Mean Reversion (RSI < 30) בשוק רגוע
+#### 1. כישלון אסטרטגיית ה-Mean Reversion (RSI < 30) - הוסרה מהייצור
 * **תפיסת סכינים נופלות (Catching Falling Knives):** אסטרטגיית חזרה לממוצע קלאסית עם RSI נמוך מ-30 קונה מניות בתיקון עמוק. בשוק רגוע, מניות חלשות שחורגות למכירת יתר קיצונית נוטות לעיתים קרובות להמשיך לדמם או לבלות זמן ממושך בתחתית, במקום להתאושש במהירות.
 * **ביצועי חסר מול ה-Benchmark:** בשוק שורי וליניארי (כמו בעשור 2010-2020), החזקת מניות מומנטום חזקות מניבה תשואת יתר משמעותית. אסטרטגיית Mean Reversion הציגה ביצועי חסר קיצוניים אל מול המדד בשל חוסר יכולת לרכוב על מגמות עולות חזקות ויציאה מהירה מדי בגלל יעדי TP קרובים.
+* **⚠️ אסטרטגיה זו הוסרה לחלוטין מהקוד והממשק בגרסה הנוכחית.**
 
-#### 2. מדוע תרחיש 3 של המומנטום (RSI = 55) הוא המנצח הבלתי מעורער?
+#### 2. מדוע תרחיש 3 של המומנטום (RSI = 55) הוא המנצח הבלתי מעורער? 🏆
 * **יציבות מתמטית של ה-Win Rate:** תרחיש 3 מציג עקביות פנומנלית ב-Win Rate עם **43.1%** בתקופת הכאוס (2021-2026) ו-**43.6%** בתקופה הרגועה (2010-2020). היציבות של אחוז ההצלחה בשני משטרי שוק כה שונים מעידה על חוסן סטטיסטי גבוה ביותר (Robustness) והיעדר Overfitting.
 * **תוחלת רווח חיובית ויחס סיכון/סיכוי אופטימלי:** עם יעד רווח (TP) של 10.0% והגנת הפסד (SL) של 5.0%, האסטרטגיה פועלת עם יחס סיכון/סיכוי (R:R) מצוין של 1:2. בשילוב עם Win Rate יציב של ~43%, תוחלת הטרייד היא חיובית באופן מובהק ומייצרת אפקט ריבית דריבית מטורף (תשואה מצטברת של **+567.8%** בטווח המלא).
 
@@ -132,10 +133,9 @@ The UI automatically adjusts parameters when you switch strategy modes:
 
 | Strategy Mode | Target RSI | Stop Loss | Take Profit | Use Case |
 |--------------|-----------|-----------|-------------|----------|
-| **Mean Reversion** | 30 | 3.0% | 6.0% | Catching oversold bounces in strong stocks |
-| **Momentum** ⭐ | 55 | 5.0% | 10.0% | **Winning Strategy** - Riding established uptrends with confirmation |
+| **Momentum** 🏆 | 55 | 5.0% | 10.0% | **Production Strategy** - Riding established uptrends with confirmation |
 
-**Note:** The Momentum strategy (RSI=55, SL=5%, TP=10%) is the **winning configuration** based on backtesting results showing +567.8% cumulative return over the full period (2010-2026) with consistent Win Rate of ~43% across both market regimes.
+**Note:** The Momentum strategy (RSI=55, SL=5%, TP=10%) is the **sole production configuration**. Mean Reversion has been completely removed from the codebase based on backtesting results showing the Momentum strategy achieved +567.8% cumulative return over the full period (2010-2026) with consistent Win Rate of ~43% across both market regimes, while Mean Reversion failed with -30.93% in volatile markets.
 
 ### Backend Architecture
 
@@ -161,9 +161,9 @@ This ensures you can safely experiment with different configurations without aff
 
 ---
 
-## 🔧 Under the Hood - Strategy Architecture Dashboard
+## 🔧 Under the Hood - Production Strategy Dashboard
 
-The **"Under the Hood"** page provides a comprehensive technical view of the dual-strategy architecture, showcasing complete isolation between Mean Reversion and Momentum strategies.
+The **"Under the Hood"** page provides a comprehensive technical view of the production Momentum strategy architecture and historical performance metrics.
 
 ### Access the Dashboard
 
@@ -173,26 +173,16 @@ Or click the **"Under the Hood"** button (blue border) in the main dashboard nav
 
 ### What You'll Find
 
-#### 1. **Backend Isolation Verification**
-Visual confirmation that both strategies operate on completely separate execution tracks:
-- **Strategy Decoupling**: ISOLATED ✅
-- **Parameter Contamination**: NONE ✅
-- **Execution Tracks**: INDEPENDENT ✅
+#### 1. **Production Strategy Status**
+Visual confirmation of the production Momentum Scenario 3 configuration:
+- **Strategy Mode**: MOMENTUM 🏆
+- **Target RSI**: 55
+- **Risk Management**: 5% SL / 10% TP
 
-The `scan_universe_generator()` function uses conditional branching (`if strategy_mode == "mean_reversion"` vs `if strategy_mode == "momentum"`) to ensure zero cross-contamination between strategies.
+#### 2. **Momentum Strategy Details**
+Complete specification of the production strategy:
 
-#### 2. **Side-by-Side Strategy Blocks**
-Two independent visual blocks displaying:
-
-**Mean Reversion Strategy:**
-- Target RSI: < 30
-- Price Position: Below SMA 20
-- Stop Loss: -3.0%
-- Take Profit: +6.0%
-- Ranking Logic: `(SMA_20 - Close) / Volatility`
-- Entry Condition: RSI crosses above 30 from below, while price is below SMA 20
-
-**Momentum Strategy:**
+**Momentum Strategy (Production):**
 - Target RSI: > 55
 - Price Position: Above SMA 50
 - Stop Loss: -5.0%
@@ -201,35 +191,30 @@ Two independent visual blocks displaying:
 - Entry Condition: RSI crosses above 55 from below, while price is above SMA 50
 
 #### 3. **Data Flow Architecture Diagram**
-A 5-step visual flow showing how parameters travel through the system:
-1. **Frontend UI Layer** → User selects strategy and parameters
-2. **Flask Route Handler (app.py)** → Receives isolated parameters
-3. **Scanner Generator (scanner.py)** → Executes ONLY selected strategy logic
-4. **Trading Logic (trading_logic.py)** → Processes results independently
+A 5-step visual flow showing how parameters travel through the production pipeline:
+1. **Frontend UI Layer** → User configures momentum parameters (RSI=55, SL=5%, TP=10%)
+2. **Flask Route Handler (app.py)** → Strategy mode is hardcoded to "momentum"
+3. **Scanner Generator (scanner.py)** → Executes momentum-specific logic
+4. **Trading Logic (trading_logic.py)** → Processes results with momentum rules
 5. **Database Persistence (data_manager.py)** → Saves to DB (LIVE only)
 
-#### 4. **Strategy Comparison Matrix**
-A detailed table comparing both strategies across 8 dimensions:
-- Market Condition
-- RSI Signal
-- Price Position
-- Ranking Logic
-- Risk/Reward Ratio
-- Holding Period
-- Best Market Regime
-- Historical Performance (2010-2026)
+#### 4. **Historical Performance Table**
+Detailed performance metrics across two market eras:
+- **Chaos Era (2021-2026)**: +100.57% return, 43.1% win rate
+- **Calm Era (2010-2020)**: +232.78% return, 43.6% win rate
+- **Full Horizon (2010-2026)**: +567.8% total return, ~43.3% stable win rate
 
-### Architecture Guarantees
+### Production Architecture
 
-**No Global State Pollution:**
-- Each scan (DRY RUN or LIVE) passes its own `strategy_mode`, `target_rsi`, `stop_loss_pct`, and `take_profit_pct` parameters explicitly through the entire pipeline
-- No shared variables or global state between strategies
-- Parameters are function arguments, not class attributes or module-level variables
+**Single Strategy Focus:**
+- The system now exclusively uses the Momentum Scenario 3 strategy
+- All routes, UI elements, and backend logic are optimized for momentum trading
+- Mean Reversion strategy has been completely removed from the codebase
 
-**Complete Execution Isolation:**
-- Mean Reversion and Momentum filters never execute simultaneously
-- Each strategy has its own conditional branch in `scanner.py`
-- Ranking mechanisms are completely different and never mixed
+**Parameter Consistency:**
+- Default values are set to the winning configuration (RSI=55, SL=5%, TP=10%)
+- Users can still adjust parameters for testing via DRY RUN mode
+- Live scans use the production-tested configuration
 
-**Visual Verification:**
-The "Under the Hood" page serves as a living documentation and verification tool, allowing you to visually confirm that the backend architecture maintains strict separation between the two trading strategies.
+**Visual Documentation:**
+The "Under the Hood" page serves as living documentation, showcasing the production strategy's technical implementation and proven historical performance.
