@@ -54,11 +54,43 @@ def save_trades(trades):
 def get_metadata():
     return load_db()["portfolio_metadata"]
 
-def update_metadata(total_deposits=None):
+def update_metadata(total_deposits=None, **kwargs):
+    """
+    Updates portfolio metadata with any provided fields.
+    """
     db = load_db()
     if total_deposits is not None:
         db["portfolio_metadata"]["total_deposits"] = total_deposits
+    
+    # Update any additional fields passed as kwargs
+    for key, value in kwargs.items():
+        db["portfolio_metadata"][key] = value
+    
     save_db(db)
+
+def update_portfolio_state(trades):
+    """
+    Updates the portfolio state in metadata based on current trades.
+    Uses analytics_generator to calculate state.
+    """
+    import analytics_generator
+    
+    db = load_db()
+    metadata = db["portfolio_metadata"]
+    total_deposits = metadata.get("total_deposits", 0)
+    
+    # Calculate portfolio state
+    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
+    
+    # Update metadata with portfolio state
+    metadata["current_equity"] = portfolio_state["current_equity"]
+    metadata["cash_available"] = portfolio_state["cash_available"]
+    metadata["invested_capital"] = portfolio_state["invested_capital"]
+    metadata["realized_pnl"] = portfolio_state["realized_pnl"]
+    metadata["unrealized_pnl"] = portfolio_state["unrealized_pnl"]
+    
+    save_db(db)
+    return portfolio_state
 
 def archive_db(archive_name="demo_archive.json"):
     if os.path.exists(DB_FILE):

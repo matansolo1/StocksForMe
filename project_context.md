@@ -30,6 +30,16 @@ The project is a lightweight, local stock scanner and portfolio tracker built wi
 * **`tracker.py`** & **`data_manager.py`**: Handles JSON persistence, active trades, history, and automated weekly trade logs.
 * **`ui_generator.py`**:
     * Generates the HTML dashboard with Tailwind CSS and Chart.js graphs. Includes the persistent **"📊 Strategy Cheat Sheet & Robustness Matrix"** to lock in proven R&D parameters.
+* **`analytics_generator.py`**:
+    * Core analytics and portfolio state management module.
+    * `calculate_portfolio_state()`: Calculates complete portfolio state (equity, cash, realized/unrealized P&L).
+    * `calculate_position_size()`: Determines position size based on available cash (Conservative approach: Cash / 3).
+    * `calculate_simple_cumulative_return()`: Calculates equal-weighted cumulative returns, aggregated by exit date.
+    * `calculate_mwr_cumulative_return()`: Calculates Money-Weighted Return accounting for position sizes.
+    * `prepare_analytics_data()`: Prepares all data for the Trade Analytics dashboard.
+* **`trade_analytics.html`**:
+    * Interactive analytics dashboard with Plotly.js charts.
+    * Displays 8 key performance metrics, cumulative return charts, and advanced filtering options.
 
 ---
 
@@ -66,8 +76,56 @@ During intensive backtesting across two distinct market eras—the **Calm Era (2
 
 ---
 
-## 5. Next Steps / Roadmap
+## 5. Trade Analytics & Capital Management System
+
+### Portfolio State Tracking
+The system now includes comprehensive portfolio state management through `analytics_generator.py`:
+
+* **Current Equity**: `Deposits + Realized P&L + Unrealized P&L`
+* **Cash Available**: `Deposits + Realized P&L - Invested Capital`
+* **Position Sizing**: `Cash Available / Max Positions (3)`
+
+### Capital Management Logic
+The scanner now uses intelligent capital management:
+1. Before opening new positions, calculates available cash from historical trades
+2. If cash is unavailable (all capital deployed), prevents new position entries
+3. Position size dynamically adjusts based on realized P&L from closed trades
+
+### Trade Analytics Dashboard (`/trade-analytics`)
+Interactive analytics page featuring:
+
+**Performance Metrics:**
+- Total Trades, Win Rate, Avg Duration, Profit Factor
+- Simple Return (equal-weighted), MWR Return (capital-weighted)
+- SPY Benchmark comparison, Alpha calculation
+
+**Interactive Charts (Plotly.js):**
+- Cumulative Returns Over Time (Simple, MWR, SPY)
+- Duration vs P&L scatter plot
+- Win/Loss distribution histogram
+
+**Advanced Filtering:**
+- Status (Closed/Active)
+- Performance (All/Winners/Losers)
+- Date range selection
+
+**Data Aggregation:**
+- Trades are aggregated by exit date (one point per day)
+- Prevents visual clutter from multiple trades on same date
+- Cumulative returns calculated correctly across entire history
+
+### Dashboard Integration
+The main dashboard now displays 4 metric cards:
+1. **Portfolio Equity**: Total value with return percentage
+2. **Cash Available**: Free cash + next position size
+3. **Realized P&L**: Profit/loss from closed trades
+4. **Unrealized P&L**: Profit/loss from active positions
+
+---
+
+## 6. Next Steps / Roadmap
 
 * **Multi-threading / Async Scanning**: Speed up the scanning process by fetching ticker data in parallel using thread pools.
 * **Trailing Stop Loss Integration**: Test a dynamic trailing stop for the momentum engine to capture runaway extensions past the 10% target.
 * **Webhook Notifications**: Add Discord or Telegram webhook alerts when high-probability setups are found.
+* **Enhanced Analytics**: Add drawdown analysis, Sharpe ratio, and trade correlation metrics.

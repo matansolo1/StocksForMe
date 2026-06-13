@@ -277,6 +277,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
             {{clearance_button}}
+            <a href="/trade-analytics" class="btn btn-secondary" style="border-color: #FFD700; color: #FFD700; background: transparent;">📊 Trade Analytics</a>
             <button onclick="openDryRunModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; background: transparent;">Dry Run Scanner</button>
             <a href="/under-the-hood" class="btn btn-secondary" style="border-color: #2196F3; color: #2196F3;">Under the Hood</a>
             <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
@@ -288,14 +289,30 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
     <div class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-label">TOTAL PORTFOLIO RETURN (MWR)</div>
-            <div class="metric-value" style="color: {{port_color}};">{{portfolio_pnl}}</div>
-            <div style="color: var(--text-dim);">Based on ${{total_deposits}} Total Deposits</div>
+            <div class="metric-label">PORTFOLIO EQUITY</div>
+            <div class="metric-value" style="color: {{equity_color}};">${{current_equity}}</div>
+            <div style="color: var(--text-dim); font-size: 0.85rem;">
+                Deposits: ${{total_deposits}} | Return: {{portfolio_pnl}}
+            </div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">OPEN TRADE P&L (USD)</div>
-            <div class="metric-value" style="color: {{realized_color}};">{{total_realized_usd}}</div>
-            <div style="color: {{realized_color}};">Unrealized P&L from active positions</div>
+            <div class="metric-label">CASH AVAILABLE</div>
+            <div class="metric-value" style="color: {{cash_color}};">${{cash_available}}</div>
+            <div style="color: var(--text-dim); font-size: 0.85rem;">
+                Invested: ${{invested_capital}} | Next Position: ${{next_position_size}}
+            </div>
+        </div>
+    </div>
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">REALIZED P&L</div>
+            <div class="metric-value" style="color: {{realized_color}};">{{realized_pnl_sign}}${{realized_pnl_abs}}</div>
+            <div style="color: {{realized_color}}; font-size: 0.85rem;">From closed trades</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">UNREALIZED P&L</div>
+            <div class="metric-value" style="color: {{unrealized_color}};">{{unrealized_pnl_sign}}${{unrealized_pnl_abs}}</div>
+            <div style="color: {{unrealized_color}}; font-size: 0.85rem;">From active positions</div>
         </div>
     </div>
     <div class="main-content">
@@ -1001,41 +1018,25 @@ def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
         </form>
         """
     
+    # Use analytics_generator to calculate portfolio state
+    import analytics_generator
+    
     metadata = data_manager.get_metadata()
     total_deposits = metadata.get("total_deposits", 0)
-
-    # Metrics
-    current_equity = total_deposits
-    total_realized_usd = 0
-    total_realized_pct = 0
     
-    # Calculate current equity
-    # Equity = Deposits + Realized P&L + Unrealized P&L
+    # Calculate portfolio state using analytics_generator
+    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
     
-    # Unrealized
-    for t in active_trades:
-        entry = t.get("entry_price", 1)
-        current = t.get("current_price", entry)
-        qty = t.get("quantity", 1000.0 / entry)
-        total_realized_usd += (current - entry) * qty # This is unrealized actually
-        # Wait, let's separate them properly
+    current_equity = portfolio_state['current_equity']
+    cash_available = portfolio_state['cash_available']
+    invested_capital = portfolio_state['invested_capital']
+    realized_pnl = portfolio_state['realized_pnl']
+    unrealized_pnl = portfolio_state['unrealized_pnl']
     
-    unrealized_usd = 0
-    for t in active_trades:
-        entry = t.get("entry_price", 1)
-        current = t.get("current_price", entry)
-        qty = t.get("quantity", 1000.0 / entry)
-        unrealized_usd += (current - entry) * qty
-
-    realized_usd = 0
-    for t in historical_trades:
-        entry = t.get("entry_price", 1)
-        exit_p = t.get("exit_price", entry)
-        qty = t.get("quantity", 1000.0 / entry)
-        realized_usd += (exit_p - entry) * qty
-        total_realized_pct += finance_utils.calculate_pnl_pct(exit_p, entry)
-
-    current_equity = total_deposits + realized_usd + unrealized_usd
+    # Calculate next position size
+    next_position_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
+    
+    # Calculate portfolio return
     portfolio_mwr = finance_utils.calculate_mwr(total_deposits, current_equity)
 
     # Table rows
@@ -1067,19 +1068,33 @@ def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
             <td style="color: {color}; font-weight: bold;">{pnl:+.2f}%</td>
         </tr>"""
 
-    # Final HTML assembly
-    port_color = "#39FF14" if portfolio_mwr >= 0 else "#ff5252"
-    # Show unrealized P&L in the second card as requested
-    unrealized_color = "#39FF14" if unrealized_usd >= 0 else "#ff5252"
+    # Final HTML assembly - prepare all template variables
+    equity_color = "#39FF14" if current_equity >= total_deposits else "#ff5252"
+    cash_color = "#39FF14" if cash_available > 0 else "#ff5252"
+    realized_color = "#39FF14" if realized_pnl >= 0 else "#ff5252"
+    unrealized_color = "#39FF14" if unrealized_pnl >= 0 else "#ff5252"
+    
+    realized_pnl_sign = "+" if realized_pnl >= 0 else ""
+    realized_pnl_abs = f"{abs(realized_pnl):.2f}"
+    unrealized_pnl_sign = "+" if unrealized_pnl >= 0 else ""
+    unrealized_pnl_abs = f"{abs(unrealized_pnl):.2f}"
     
     charts_json = json.dumps(get_charts_data(active_trades))
     
-    html = HTML_TEMPLATE.replace("{{port_color}}", port_color)\
-                       .replace("{{portfolio_pnl}}", f"{portfolio_mwr:+.2f}%")\
+    html = HTML_TEMPLATE.replace("{{equity_color}}", equity_color)\
+                       .replace("{{current_equity}}", f"{current_equity:,.2f}")\
                        .replace("{{total_deposits}}", f"{total_deposits:,.2f}")\
-                       .replace("{{realized_color}}", unrealized_color)\
-                       .replace("{{total_realized_usd}}", f"${unrealized_usd:+.2f}")\
-                       .replace("{{total_realized_pct}}", f"{total_realized_pct:+.2f}%")\
+                       .replace("{{portfolio_pnl}}", f"{portfolio_mwr:+.2f}%")\
+                       .replace("{{cash_color}}", cash_color)\
+                       .replace("{{cash_available}}", f"{cash_available:,.2f}")\
+                       .replace("{{invested_capital}}", f"{invested_capital:,.2f}")\
+                       .replace("{{next_position_size}}", f"{next_position_size:,.2f}")\
+                       .replace("{{realized_color}}", realized_color)\
+                       .replace("{{realized_pnl_sign}}", realized_pnl_sign)\
+                       .replace("{{realized_pnl_abs}}", realized_pnl_abs)\
+                       .replace("{{unrealized_color}}", unrealized_color)\
+                       .replace("{{unrealized_pnl_sign}}", unrealized_pnl_sign)\
+                       .replace("{{unrealized_pnl_abs}}", unrealized_pnl_abs)\
                        .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
                        .replace("{{charts_json}}", charts_json)\

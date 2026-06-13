@@ -218,3 +218,95 @@ Detailed performance metrics across two market eras:
 
 **Visual Documentation:**
 The "Under the Hood" page serves as living documentation, showcasing the production strategy's technical implementation and proven historical performance.
+
+---
+
+## 📊 Trade Analytics Dashboard
+
+The **Trade Analytics** page provides comprehensive performance analysis and visualization of your trading history.
+
+### Access the Dashboard
+
+Navigate to: [http://127.0.0.1:5000/trade-analytics](http://127.0.0.1:5000/trade-analytics)
+
+Or click the **"📊 Trade Analytics"** button (gold border) in the main dashboard navigation bar.
+
+### Features
+
+#### 1. **Portfolio State Tracking**
+The system now accurately tracks your complete portfolio state:
+- **Current Equity**: Total portfolio value (deposits + realized P&L + unrealized P&L)
+- **Cash Available**: Free cash for new positions
+- **Invested Capital**: Capital currently deployed in active positions
+- **Realized P&L**: Profit/loss from closed trades
+- **Unrealized P&L**: Profit/loss from active positions
+- **Next Position Size**: Calculated position size for the next trade (Cash Available / 3)
+
+#### 2. **Performance Metrics**
+Eight key metrics displayed at the top:
+- **Total Trades**: Number of trades executed
+- **Win Rate**: Percentage of profitable trades
+- **Avg Duration**: Average trade duration in days
+- **Profit Factor**: Ratio of total wins to total losses
+- **Simple Return**: Cumulative return treating all trades equally
+- **MWR Return**: Money-Weighted Return accounting for position sizes
+- **SPY Return**: S&P 500 benchmark performance
+- **Alpha**: Strategy outperformance vs. SPY
+
+#### 3. **Interactive Charts**
+
+**Main Chart - Cumulative Returns Over Time:**
+- 🔵 **Simple Return**: Equal-weighted cumulative return
+- 🟢 **MWR Return**: Capital-weighted cumulative return
+- 🟡 **SPY Benchmark**: S&P 500 comparison (dashed line)
+- Hover over points to see detailed information
+- One point per day (aggregates multiple trades on same date)
+
+**Secondary Charts:**
+- **Duration vs P&L**: Scatter plot showing relationship between trade duration and profitability
+- **Win/Loss Distribution**: Histogram of P&L distribution across all trades
+
+#### 4. **Advanced Filters**
+Filter your analysis by:
+- **Status**: Closed trades, Active positions, or both
+- **Performance**: All trades, Winners only, or Losers only
+- **Date Range**: Custom start and end dates
+
+### Capital Management System
+
+The analytics system includes a sophisticated capital management module (`analytics_generator.py`) that:
+
+1. **Tracks Historical Performance**: Uses all trades from `trades_db.json` to calculate current portfolio state
+2. **Calculates Available Cash**: `Cash = Deposits + Realized P&L - Invested Capital`
+3. **Determines Position Sizing**: `Position Size = Cash Available / Max Positions (3)`
+4. **Prevents Over-Leverage**: Scanner won't open new positions if cash is unavailable
+
+**Example:**
+- Deposits: $4,500
+- Realized P&L: -$300 (from closed trades)
+- Unrealized P&L: +$200 (from active positions)
+- **Current Equity**: $4,400
+- **Cash Available**: $4,200 (if no active positions)
+- **Next Position Size**: $1,400 ($4,200 / 3)
+
+### Data Aggregation
+
+The system intelligently aggregates trades by exit date:
+- Multiple trades closed on the same day are combined into a single data point
+- Cumulative returns are calculated correctly across the entire trading history
+- This prevents visual clutter and provides clearer trend analysis
+
+### Backend Architecture
+
+**New Files:**
+- `analytics_generator.py`: Core analytics calculations and portfolio state management
+- `trade_analytics.html`: Frontend visualization with Plotly.js charts
+
+**API Endpoints:**
+- `/trade-analytics`: Serves the analytics page
+- `/api/trade-analytics`: Returns JSON data for charts and metrics
+
+**Integration:**
+- Dashboard now shows 4 metric cards with real-time portfolio state
+- Scanner uses `calculate_position_size()` to determine trade sizes
+- All calculations use historical trade data for accuracy

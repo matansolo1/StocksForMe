@@ -202,6 +202,7 @@ def scan_stream():
     import scanner
     import trading_logic
     import data_manager
+    import analytics_generator
     
     strategy_mode = 'momentum'  # Fixed to momentum strategy
     target_rsi = float(request.args.get('target_rsi', 55.0))
@@ -214,10 +215,17 @@ def scan_stream():
         metadata = db["portfolio_metadata"]
         
         total_deposits = metadata.get("total_deposits", 0)
-        if total_deposits <= 0:
-            pos_size = 0
-        else:
-            pos_size = total_deposits / 3.0
+        
+        # Calculate portfolio state using analytics_generator
+        portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
+        
+        # Calculate position size based on available cash (Option A - Conservative)
+        pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
+        
+        if pos_size <= 0:
+            yield f"data: {json.dumps({'progress': 0, 'message': 'No cash available for new positions. Close existing trades first.'})}\n\n"
+            yield f"data: {json.dumps({'progress': 100, 'complete': True})}\n\n"
+            return
             
         top_setups = []
         
@@ -351,6 +359,25 @@ def api_backtest():
         use_monte_carlo=use_monte_carlo
     )
     return jsonify(results)
+
+@app.route('/trade-analytics')
+def trade_analytics():
+    with open("trade_analytics.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+@app.route('/api/trade-analytics')
+def api_trade_analytics():
+    import analytics_generator
+    
+    # Load trades and metadata
+    trades = data_manager.load_trades()
+    metadata = data_manager.get_metadata()
+    total_deposits = metadata.get("total_deposits", 0)
+    
+    # Prepare analytics data
+    analytics_data = analytics_generator.prepare_analytics_data(trades, total_deposits)
+    
+    return jsonify(analytics_data)
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
