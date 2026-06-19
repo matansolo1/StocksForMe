@@ -1,6 +1,7 @@
 from datetime import datetime
 import stock_api
 import finance_utils
+import pandas as pd
 
 def check_intraday_stop_loss_take_profit(trades):
     """
@@ -20,9 +21,9 @@ def check_intraday_stop_loss_take_profit(trades):
             continue
             
         try:
-            # Parse entry date (use date only, not time)
-            entry_date = datetime.strptime(entry_timestamp.split()[0], "%Y-%m-%d")
-            days_since_entry = (datetime.now() - entry_date).days
+            # Parse FULL entry timestamp (including time)
+            entry_dt = datetime.strptime(entry_timestamp, "%Y-%m-%d %H:%M:%S")
+            days_since_entry = (datetime.now() - entry_dt).days
             
             # yfinance provides 5-minute data for up to 60 days
             # If trade is older, skip intraday check (will be checked by daily candles)
@@ -37,9 +38,10 @@ def check_intraday_stop_loss_take_profit(trades):
             if df is None or df.empty or "High" not in df.columns or "Low" not in df.columns:
                 continue
             
-            # Filter candles to only those on or after entry date (not strict time comparison)
-            # This ensures we catch any intraday movements on the entry day itself
-            df = df[df.index.date >= entry_date.date()]
+            # Filter candles to only those AFTER entry time (not just entry date)
+            # This ensures we only check SL/TP hits AFTER the trade was entered
+            entry_dt_utc = pd.Timestamp(entry_dt).tz_localize('UTC')
+            df = df[df.index > entry_dt_utc]
             
             if df.empty:
                 continue
@@ -83,41 +85,63 @@ def update_portfolio_status(trades):
     Updates the prices and statuses of all active trades.
     First checks intraday 5-minute candles for precise SL/TP detection,
     then updates current prices with daily data.
+    Uses fallback methods for weekend/market closed scenarios.
     Inputs: trades (list)
     Output: list (updated trades)
     """
     # First, check intraday candles for precise stop loss / take profit detection
     trades = check_intraday_stop_loss_take_profit(trades)
     
-    updated_any = False
     for trade in trades:
         # Skip trades that were already closed by intraday check
         if trade.get("status") in ["ACTIVE", "REVIEW"]:
             ticker = trade["ticker"]
+            current_price = None
+            price_source = None
+            
+            # Method 1: Try get_live_data (daily candles)
             df = stock_api.get_live_data(ticker)
             if df is not None and not df.empty and "Close" in df.columns:
                 try:
                     current_price = float(df["Close"].iloc[-1])
-                    trade["current_price"] = current_price
-                    trade["pnl_pct"] = finance_utils.calculate_pnl_pct(current_price, trade["entry_price"])
-                    
-                    if current_price >= trade["take_profit"]:
-                        trade["status"] = "HIT_TP"
-                        trade["exit_price"] = current_price
-                        trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    elif current_price <= trade["stop_loss"]:
-                        trade["status"] = "HIT_SL"
-                        trade["exit_price"] = current_price
-                        trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    elif trade.get("status") == "ACTIVE":
-                        ts_str = trade.get("timestamp")
-                        if ts_str:
-                            entry_date = datetime.strptime(ts_str.split()[0], "%Y-%m-%d")
-                            if (datetime.now() - entry_date).days >= 7:
-                                trade["status"] = "REVIEW"
+                    last_date = df.index[-1].strftime("%Y-%m-%d")
+                    price_source = f"נכון לסגירת המסחר ב-{last_date}"
                 except Exception as e:
-                    print(f"Error updating trade {ticker}: {e}")
-                    continue
+                    print(f"Error parsing live data for {ticker}: {e}")
+            
+            # Method 2: Fallback to get_last_price (works on weekends)
+            if current_price is None:
+                print(f"📊 {ticker}: משתמש במחיר סגירה אחרון (שוק סגור)")
+                current_price, last_date = stock_api.get_last_price(ticker)
+                if current_price and last_date:
+                    price_source = f"נכון לסגירת המסחר האחרונה ({last_date})"
+                elif current_price:
+                    price_source = "נכון לסגירת המסחר האחרונה"
+            
+            # Update trade if we got a price
+            if current_price is not None:
+                trade["current_price"] = current_price
+                trade["pnl_pct"] = finance_utils.calculate_pnl_pct(current_price, trade["entry_price"])
+                trade["price_note"] = price_source  # Add note about price freshness
+                
+                # Check SL/TP conditions
+                if current_price >= trade["take_profit"]:
+                    trade["status"] = "HIT_TP"
+                    trade["exit_price"] = current_price
+                    trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                elif current_price <= trade["stop_loss"]:
+                    trade["status"] = "HIT_SL"
+                    trade["exit_price"] = current_price
+                    trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                elif trade.get("status") == "ACTIVE":
+                    ts_str = trade.get("timestamp")
+                    if ts_str:
+                        entry_date = datetime.strptime(ts_str.split()[0], "%Y-%m-%d")
+                        if (datetime.now() - entry_date).days >= 7:
+                            trade["status"] = "REVIEW"
+            else:
+                print(f"❌ {ticker}: לא ניתן לקבל מחיר - מדלג על עדכון")
+                
     return trades
 
 def process_scanner_swaps(trades, new_setups, position_size_usd=None):

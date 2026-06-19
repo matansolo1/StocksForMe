@@ -899,6 +899,57 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 document.getElementById('dryRunStartBtn').style.opacity = '1';
             };
         };
+        
+        // Auto-refresh functionality - updates prices every 15 minutes during market hours
+        const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes in milliseconds
+        let lastUpdateTime = new Date();
+        
+        async function autoRefreshPrices() {
+            try {
+                // Check market status
+                const marketResp = await fetch('/api/market-status');
+                const marketData = await marketResp.json();
+                
+                // Update last refresh time display
+                lastUpdateTime = new Date();
+                const timeStr = lastUpdateTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('market-label').innerText = `${marketData.message} | עודכן: ${timeStr}`;
+                
+                // If market is open or it's a weekday, refresh prices
+                const day = new Date().getDay();
+                const isWeekday = day >= 1 && day <= 5;
+                
+                if (marketData.status === 'open' || isWeekday) {
+                    console.log('Auto-refreshing prices...');
+                    const refreshResp = await fetch('/refresh-tracker');
+                    if (refreshResp.ok) {
+                        console.log('✅ Prices refreshed successfully');
+                        // Reload the page to show updated prices
+                        location.reload();
+                    }
+                }
+            } catch (e) {
+                console.error('Error in auto-refresh:', e);
+            }
+        }
+        
+        // Initialize auto-refresh
+        (async () => {
+            // Check market status immediately on load
+            try {
+                const response = await fetch('/api/market-status');
+                const data = await response.json();
+                document.getElementById('market-led').className = data.status === 'open' ? 'led-dot led-green' : 'led-dot led-red';
+                const timeStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('market-label').innerText = `${data.message} | עודכן: ${timeStr}`;
+            } catch (e) {
+                console.error('Error checking market status:', e);
+            }
+            
+            // Set up auto-refresh interval
+            setInterval(autoRefreshPrices, REFRESH_INTERVAL);
+            console.log(`🔄 Auto-refresh enabled: every ${REFRESH_INTERVAL / 60000} minutes`);
+        })();
     </script>
 
     <!-- Dry Run Scanner Modal -->
