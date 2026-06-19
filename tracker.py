@@ -33,7 +33,7 @@ def main():
     
     # 6. Open browser if not triggered by Flask
     if os.environ.get("FLASK_TRIGGERED") != "true":
-        dashboard_path = os.path.abspath("tracker_dashboard.html")
+        dashboard_path = os.path.abspath("output/tracker_dashboard.html")
         webbrowser.open(f"file://{dashboard_path}")
 
 if __name__ == "__main__":

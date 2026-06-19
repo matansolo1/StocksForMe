@@ -7,8 +7,8 @@ from scanner import UNIVERSE
 import finance_utils
 import monte_carlo_backtester
 
-CACHE_RECENT = "backtest_data_cache_recent.pkl"
-CACHE_CALM = "backtest_data_cache_calm.pkl"
+CACHE_RECENT = "cache/backtest_data_cache_recent.pkl"
+CACHE_CALM = "cache/backtest_data_cache_calm.pkl"
 
 def get_backtest_data(period="recent"):
     """

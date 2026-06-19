@@ -990,7 +990,7 @@ def get_charts_data(active_trades):
             }
     return charts_data
 
-def generate_dashboard_file(trades, output_file="tracker_dashboard.html"):
+def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html"):
     """
     Generates the final HTML dashboard.
     """

@@ -24,3 +24,13 @@ tracker_dashboard.html
 
 # Media / Recordings
 *.mp4
+
+# Cache files
+cache/
+*.pkl
+
+# Generated output files
+output/
+
+# Archive
+archive/

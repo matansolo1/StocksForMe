@@ -8,7 +8,7 @@ import ui_generator
 
 app = Flask(__name__)
 
-DASHBOARD_FILE = "tracker_dashboard.html"
+DASHBOARD_FILE = "output/tracker_dashboard.html"
 
 DEPOSIT_FORM_HTML = """
 <!DOCTYPE html>
@@ -336,7 +336,7 @@ def market_status():
 
 @app.route('/under-the-hood')
 def under_the_hood():
-    with open("under_the_hood.html", "r", encoding="utf-8") as f:
+    with open("output/under_the_hood.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.route('/api/backtest', methods=['POST'])
@@ -362,7 +362,7 @@ def api_backtest():
 
 @app.route('/trade-analytics')
 def trade_analytics():
-    with open("trade_analytics.html", "r", encoding="utf-8") as f:
+    with open("output/trade_analytics.html", "r", encoding="utf-8") as f:
         return f.read()
 
 @app.route('/api/trade-analytics')
