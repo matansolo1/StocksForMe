@@ -8,6 +8,33 @@ This document serves as the single "Source of Truth" for the StocksForMe Stock S
 
 The project is a lightweight, local stock scanner and portfolio tracker built with Python Flask and Tailwind CSS. It scans a universe of ~100 tickers to identify high-probability swing trading setups based on technical indicators (EMA, RSI, MACD, Volume, and ATR) and manages active trades.
 
+### Project Structure:
+
+```
+stocks_for_me/
+├── 📁 archive/              # Old files and archives (demo_archive.json, test files, reports)
+├── 📁 cache/                # Cache files (*.pkl, backtest_5min_cache/)
+├── 📁 output/               # Dynamically generated HTML files (dashboards)
+├── 📁 media/                # Demo videos and screenshots
+├── 📁 data/                 # Production data (trades_db.json)
+├── 📄 app.py                # Flask server - main entry point
+├── 📄 scanner.py            # Weekly scanning engine
+├── 📄 backtester.py         # Backtesting engine
+├── 📄 trading_logic.py      # Trading logic and decisions
+├── 📄 tracker.py            # Portfolio tracking
+├── 📄 ui_generator.py       # HTML interface generation
+├── 📄 analytics_generator.py # Performance calculations
+├── 📄 data_manager.py       # Data management
+├── 📄 stock_api.py          # Yahoo Finance interface
+└── 📄 finance_utils.py      # Financial utilities
+```
+
+**Note:** The project structure was reorganized to separate concerns:
+- **Code files** remain in the root for easy access
+- **Generated files** (cache, output) are in dedicated directories
+- **Archive files** are separated from active development
+- **Media files** are isolated to prevent clutter
+
 ### File Breakdown & Responsibilities:
 
 * **`app.py`**:

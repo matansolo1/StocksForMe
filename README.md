@@ -2,6 +2,27 @@
 
 מערכת מסחר כמותי מבוססת RSI ומומנטום (Momentum Breakout) עבור מניות נאסד"ק (Nasdaq).
 
+## מבנה הפרויקט (Project Structure)
+
+```
+stocks_for_me/
+├── 📁 archive/              # קבצים ישנים וארכיון
+├── 📁 cache/                # קבצי cache (*.pkl, backtest_5min_cache)
+├── 📁 output/               # HTML שנוצר דינמית
+├── 📁 media/                # סרטוני הדגמה וצילומי מסך
+├── 📁 data/                 # נתוני ייצור (trades_db.json)
+├── 📄 app.py                # Flask server - נקודת כניסה ראשית
+├── 📄 scanner.py            # מנוע הסריקה השבועי
+├── 📄 backtester.py         # מנוע בדיקה אחורית
+├── 📄 trading_logic.py      # לוגיקת מסחר והחלטות
+├── 📄 tracker.py            # מעקב פורטפוליו
+├── 📄 ui_generator.py       # יצירת ממשק HTML
+├── 📄 analytics_generator.py # חישובי ביצועים
+├── 📄 data_manager.py       # ניהול נתונים
+├── 📄 stock_api.py          # ממשק Yahoo Finance
+└── 📄 finance_utils.py      # כלי עזר פיננסיים
+```
+
 ## התקנה (Installation)
 
 התקן את כל הספריות הנדרשות בפקודה אחת:
