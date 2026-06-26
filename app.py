@@ -215,9 +215,10 @@ def scan_stream():
         metadata = db["portfolio_metadata"]
         
         total_deposits = metadata.get("total_deposits", 0)
+        commission_per_trade = metadata.get("commission_per_trade", 2.5)
         
         # Calculate portfolio state using analytics_generator
-        portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
+        portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
         
         # Calculate position size based on available cash (Option A - Conservative)
         pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
@@ -239,7 +240,7 @@ def scan_stream():
         yield f"data: {json.dumps({'progress': 100, 'message': 'Adding new trades (filling empty slots)...'})}\n\n"
         
         # Only add new trades to fill empty slots (matches backtester logic)
-        trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
+        trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade)
         data_manager.save_trades(trades)
         
         yield f"data: {json.dumps({'progress': 100, 'message': 'Triggering tracker update...'})}\n\n"

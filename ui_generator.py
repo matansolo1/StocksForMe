@@ -315,6 +315,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="color: {{unrealized_color}}; font-size: 0.85rem;">From active positions</div>
         </div>
     </div>
+    <div class="metrics-grid" style="grid-template-columns: 1fr;">
+        <div class="metric-card" style="background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 1px solid #333;">
+            <div class="metric-label" style="color: #f39c12;">💰 TOTAL COMMISSIONS PAID</div>
+            <div class="metric-value" style="color: #f39c12; font-size: 2rem;">${{total_commissions}}</div>
+            <div style="color: var(--text-dim); font-size: 0.85rem;">
+                Commission per trade: ${{commission_per_trade}} | Total trades executed: {{total_trades_count}}
+            </div>
+        </div>
+    </div>
     <div class="main-content">
         <div class="table-section">
             <h3>Active Positions</h3>
@@ -349,18 +358,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <h2 style="color: var(--neon-green); margin-top: 0;">System Guide & Strategy</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
             <div>
-                <h3 style="color: white;">Trading Rules</h3>
+                <h3 style="color: white;">Trading Rules (Momentum Scenario 3 🏆)</h3>
                 <ul style="color: var(--text-dim); line-height: 1.6;">
                     <li><strong>Max Positions:</strong> Up to 3 stocks active at once.</li>
-                    <li><strong>Weighting:</strong> Dynamic based on Portfolio Value (~33.3%).</li>
+                    <li><strong>Weighting:</strong> Dynamic based on Available Cash / 3 (~33.3% each).</li>
                     <li><strong>Global Filter:</strong> Entries are ONLY allowed when S&P 500 is bullish (<code>SPY > SMA 200</code>).</li>
-                    <li><strong>Setup Criteria:</strong> Close price below SMA 20, and <code>RSI 14 < 35</code> (Oversold).</li>
-                    <li><strong>Exit Conditions:</strong> Target <strong>Take Profit</strong> at SMA 20, or protect with <strong>Stop Loss</strong> at 3x Volatility (1.5x wider than original).</li>
+                    <li><strong>Setup Criteria:</strong> RSI crosses above 55 (from below) while price is above SMA 50 - capturing momentum breakouts.</li>
+                    <li><strong>Exit Conditions:</strong> Fixed <strong>Take Profit</strong> at +10% or <strong>Stop Loss</strong> at -5% (1:2 Risk/Reward Ratio).</li>
+                    <li><strong>No Time Limits:</strong> Positions stay open until SL or TP is hit - some take 3 days, some take 15+ days.</li>
                 </ul>
             </div>
             <div>
-                <h3 style="color: white;">Weekly Swap Logic</h3>
-                <p style="color: var(--text-dim); line-height: 1.6;">Every Sunday evening, the scanner identifies new setups:<br>1. Fills empty position slots (up to 3 total positions).<br>2. Does NOT close existing positions - only SL/TP close positions.<br>3. If SPY is below SMA 200, no new positions are added.<br>4. Run scan on Sunday evening, enter trades Monday morning at market open.</p>
+                <h3 style="color: white;">Weekly Trading Workflow</h3>
+                <p style="color: var(--text-dim); line-height: 1.6; margin-bottom: 15px;"><strong>🗓️ Sunday Evening (21:00-22:00 Israel Time):</strong></p>
+                <ul style="color: var(--text-dim); line-height: 1.6; margin-top: 0;">
+                    <li>Run weekly scanner to identify new momentum setups</li>
+                    <li>Scanner fills empty position slots only (up to 3 total)</li>
+                    <li>If 1 position active → adds 2 new positions</li>
+                    <li>If 2 positions active → adds 1 new position</li>
+                    <li>If 3 positions active → adds 0 new positions</li>
+                    <li>Scanner does NOT close existing positions</li>
+                </ul>
+                <p style="color: var(--text-dim); line-height: 1.6; margin-top: 15px; margin-bottom: 0;"><strong>📈 Monday Morning (16:30 Israel Time = 9:30 AM US):</strong></p>
+                <ul style="color: var(--text-dim); line-height: 1.6; margin-top: 0;">
+                    <li>Execute trades at market open using Market Orders</li>
+                    <li>Set Stop Loss at Entry × 0.95 (-5%)</li>
+                    <li>Set Take Profit at Entry × 1.10 (+10%)</li>
+                    <li>Wait for SL/TP to trigger (no manual intervention)</li>
+                </ul>
             </div>
         </div>
     </div>
@@ -1074,15 +1099,17 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     
     metadata = data_manager.get_metadata()
     total_deposits = metadata.get("total_deposits", 0)
+    commission_per_trade = metadata.get("commission_per_trade", 2.5)
     
     # Calculate portfolio state using analytics_generator
-    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
+    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
     
     current_equity = portfolio_state['current_equity']
     cash_available = portfolio_state['cash_available']
     invested_capital = portfolio_state['invested_capital']
     realized_pnl = portfolio_state['realized_pnl']
     unrealized_pnl = portfolio_state['unrealized_pnl']
+    total_commissions = portfolio_state.get('total_commissions', 0)
     
     # Calculate next position size
     next_position_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
@@ -1132,6 +1159,9 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     
     charts_json = json.dumps(get_charts_data(active_trades))
     
+    # Calculate total trades count (active + closed)
+    total_trades_count = len(trades)
+    
     html = HTML_TEMPLATE.replace("{{equity_color}}", equity_color)\
                        .replace("{{current_equity}}", f"{current_equity:,.2f}")\
                        .replace("{{total_deposits}}", f"{total_deposits:,.2f}")\
@@ -1146,6 +1176,9 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                        .replace("{{unrealized_color}}", unrealized_color)\
                        .replace("{{unrealized_pnl_sign}}", unrealized_pnl_sign)\
                        .replace("{{unrealized_pnl_abs}}", unrealized_pnl_abs)\
+                       .replace("{{total_commissions}}", f"{total_commissions:,.2f}")\
+                       .replace("{{commission_per_trade}}", f"{commission_per_trade:.2f}")\
+                       .replace("{{total_trades_count}}", str(total_trades_count))\
                        .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
                        .replace("{{charts_json}}", charts_json)\

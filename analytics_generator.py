@@ -8,13 +8,14 @@ from datetime import datetime
 import stock_api
 
 
-def calculate_portfolio_state(trades, total_deposits):
+def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
     """
     Calculates the complete portfolio state including equity, cash, and P&L.
     
     Args:
         trades: List of trade dictionaries
         total_deposits: Total amount deposited into the portfolio
+        commission_per_trade: Commission per trade in USD (default: $2.5)
     
     Returns:
         Dictionary with portfolio state metrics
@@ -22,21 +23,28 @@ def calculate_portfolio_state(trades, total_deposits):
     realized_pnl = 0
     unrealized_pnl = 0
     invested_capital = 0
+    total_commissions = 0
     
     for trade in trades:
         position_value = trade.get('quantity', 0) * trade.get('entry_price', 0)
         
         if trade.get('status') == 'ACTIVE':
-            # Active positions - calculate unrealized P&L
+            # Active positions - calculate unrealized P&L (subtract entry commission only)
             current_price = trade.get('current_price', trade.get('entry_price', 0))
             current_value = trade.get('quantity', 0) * current_price
-            unrealized_pnl += (current_value - position_value)
+            entry_commission = trade.get('commission_entry', commission_per_trade)
+            unrealized_pnl += (current_value - position_value) - entry_commission
             invested_capital += position_value
+            total_commissions += entry_commission
         else:
-            # Closed positions - calculate realized P&L
+            # Closed positions - calculate realized P&L (subtract both entry and exit commissions)
             exit_price = trade.get('exit_price', trade.get('entry_price', 0))
             exit_value = trade.get('quantity', 0) * exit_price
-            realized_pnl += (exit_value - position_value)
+            entry_commission = trade.get('commission_entry', commission_per_trade)
+            exit_commission = trade.get('commission_exit', commission_per_trade)
+            total_trade_commission = entry_commission + exit_commission
+            realized_pnl += (exit_value - position_value) - total_trade_commission
+            total_commissions += total_trade_commission
     
     current_equity = total_deposits + realized_pnl + unrealized_pnl
     cash_available = total_deposits + realized_pnl - invested_capital
@@ -47,7 +55,8 @@ def calculate_portfolio_state(trades, total_deposits):
         'invested_capital': round(invested_capital, 2),
         'realized_pnl': round(realized_pnl, 2),
         'unrealized_pnl': round(unrealized_pnl, 2),
-        'total_deposits': total_deposits
+        'total_deposits': total_deposits,
+        'total_commissions': round(total_commissions, 2)
     }
 
 

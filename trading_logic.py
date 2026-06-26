@@ -61,6 +61,10 @@ def check_intraday_stop_loss_take_profit(trades):
                     trade["exit_timestamp"] = idx.strftime("%Y-%m-%d %H:%M:%S")
                     trade["current_price"] = take_profit
                     trade["pnl_pct"] = finance_utils.calculate_pnl_pct(take_profit, trade["entry_price"])
+                    # Add exit commission
+                    commission = trade.get("commission_entry", 2.5)
+                    trade["commission_exit"] = commission
+                    trade["total_commission"] = trade.get("commission_entry", commission) + commission
                     print(f"✅ {ticker} hit Take Profit at {trade['exit_timestamp']}")
                     break
                     
@@ -71,6 +75,10 @@ def check_intraday_stop_loss_take_profit(trades):
                     trade["exit_timestamp"] = idx.strftime("%Y-%m-%d %H:%M:%S")
                     trade["current_price"] = stop_loss
                     trade["pnl_pct"] = finance_utils.calculate_pnl_pct(stop_loss, trade["entry_price"])
+                    # Add exit commission
+                    commission = trade.get("commission_entry", 2.5)
+                    trade["commission_exit"] = commission
+                    trade["total_commission"] = trade.get("commission_entry", commission) + commission
                     print(f"🛑 {ticker} hit Stop Loss at {trade['exit_timestamp']}")
                     break
                     
@@ -129,10 +137,18 @@ def update_portfolio_status(trades):
                     trade["status"] = "HIT_TP"
                     trade["exit_price"] = current_price
                     trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Add exit commission
+                    commission = trade.get("commission_entry", 2.5)
+                    trade["commission_exit"] = commission
+                    trade["total_commission"] = trade.get("commission_entry", commission) + commission
                 elif current_price <= trade["stop_loss"]:
                     trade["status"] = "HIT_SL"
                     trade["exit_price"] = current_price
                     trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # Add exit commission
+                    commission = trade.get("commission_entry", 2.5)
+                    trade["commission_exit"] = commission
+                    trade["total_commission"] = trade.get("commission_entry", commission) + commission
                 # No time-based status changes - positions stay ACTIVE until SL/TP hit
             else:
                 print(f"❌ {ticker}: לא ניתן לקבל מחיר - מדלג על עדכון")
@@ -140,11 +156,18 @@ def update_portfolio_status(trades):
     return trades
 
 
-def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0):
+def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0, commission_per_trade=2.5):
     """
     Adds new trades from scanner if there's room in the portfolio.
     Only fills empty slots - does not close existing positions.
     Matches backtester logic: simple position filling.
+    
+    Args:
+        trades: List of existing trades
+        new_setups: List of new setup dictionaries from scanner
+        max_positions: Maximum concurrent positions
+        position_size_usd: Position size in USD
+        commission_per_trade: Commission per trade in USD (default: $2.5)
     """
     active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
     active_tickers = [t['ticker'] for t in active_trades]
@@ -166,12 +189,15 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "status": "ACTIVE",
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "weight_pct": 33.33,
-                "quantity": position_size_usd / entry_price
+                "quantity": position_size_usd / entry_price,
+                "commission_entry": commission_per_trade,
+                "commission_exit": 0,  # Will be set when position closes
+                "total_commission": commission_per_trade  # Will be updated on exit
             }
             trades.append(trade)
             active_trades.append(trade)
             active_tickers.append(trade['ticker'])
             added_any = True
-            print(f"Added new trade: {trade['ticker']}")
+            print(f"Added new trade: {trade['ticker']} (Entry commission: ${commission_per_trade})")
             
     return trades, added_any

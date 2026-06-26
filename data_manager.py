@@ -11,7 +11,14 @@ def load_db():
     """
     if not os.path.exists(DB_FILE):
         # Auto-create trades_db.json if missing to prevent crashes on first run
-        default_db = {"portfolio_metadata": {"total_deposits": 0.0, "last_updated": ""}, "trades": []}
+        default_db = {
+            "portfolio_metadata": {
+                "total_deposits": 0.0,
+                "commission_per_trade": 2.5,
+                "last_updated": ""
+            },
+            "trades": []
+        }
         try:
             with open(DB_FILE, "w", encoding="utf-8") as f:
                 json.dump(default_db, f, indent=4, ensure_ascii=False)
@@ -24,13 +31,27 @@ def load_db():
             # Migration logic if it's still just a list
             if isinstance(data, list):
                 return {
-                    "portfolio_metadata": {"total_deposits": len(data) * 1000.0 if data else 0.0, "last_updated": ""},
+                    "portfolio_metadata": {
+                        "total_deposits": len(data) * 1000.0 if data else 0.0,
+                        "commission_per_trade": 2.5,
+                        "last_updated": ""
+                    },
                     "trades": data
                 }
+            # Add commission_per_trade if missing (migration)
+            if "commission_per_trade" not in data.get("portfolio_metadata", {}):
+                data["portfolio_metadata"]["commission_per_trade"] = 2.5
             return data
     except Exception as e:
         print(f"Error loading DB: {e}")
-        return {"portfolio_metadata": {"total_deposits": 0.0, "last_updated": ""}, "trades": []}
+        return {
+            "portfolio_metadata": {
+                "total_deposits": 0.0,
+                "commission_per_trade": 2.5,
+                "last_updated": ""
+            },
+            "trades": []
+        }
 
 def save_db(data):
     """
@@ -78,9 +99,10 @@ def update_portfolio_state(trades):
     db = load_db()
     metadata = db["portfolio_metadata"]
     total_deposits = metadata.get("total_deposits", 0)
+    commission_per_trade = metadata.get("commission_per_trade", 2.5)
     
     # Calculate portfolio state
-    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits)
+    portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
     
     # Update metadata with portfolio state
     metadata["current_equity"] = portfolio_state["current_equity"]
@@ -102,4 +124,11 @@ def archive_db(archive_name="demo_archive.json"):
     return False
 
 def reset_db():
-    save_db({"portfolio_metadata": {"total_deposits": 0.0, "last_updated": ""}, "trades": []})
+    save_db({
+        "portfolio_metadata": {
+            "total_deposits": 0.0,
+            "commission_per_trade": 2.5,
+            "last_updated": ""
+        },
+        "trades": []
+    })

@@ -260,6 +260,8 @@ def main():
     metadata = db["portfolio_metadata"]
     
     total_deposits = metadata.get("total_deposits", 0)
+    commission_per_trade = metadata.get("commission_per_trade", 2.5)
+    
     if total_deposits <= 0:
         print("Warning: No deposits found. Position sizing will be 0.")
         pos_size = 0
@@ -267,7 +269,7 @@ def main():
         pos_size = total_deposits / 3.0
     
     # Only add new trades to fill empty slots (matches backtester logic)
-    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
+    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade)
     data_manager.save_trades(trades)
     
     print("Step 3: Triggering Tracker Update...")
