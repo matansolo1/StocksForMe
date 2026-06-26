@@ -26,7 +26,7 @@ def calculate_portfolio_state(trades, total_deposits):
     for trade in trades:
         position_value = trade.get('quantity', 0) * trade.get('entry_price', 0)
         
-        if trade.get('status') in ['ACTIVE', 'REVIEW']:
+        if trade.get('status') == 'ACTIVE':
             # Active positions - calculate unrealized P&L
             current_price = trade.get('current_price', trade.get('entry_price', 0))
             current_value = trade.get('quantity', 0) * current_price
@@ -85,7 +85,7 @@ def calculate_simple_cumulative_return(trades):
         List of dictionaries with date and cumulative return
     """
     # Filter and sort closed trades by exit timestamp (not entry!)
-    closed_trades = [t for t in trades if t.get('status') not in ['ACTIVE', 'REVIEW'] and t.get('exit_timestamp')]
+    closed_trades = [t for t in trades if t.get('status') != 'ACTIVE' and t.get('exit_timestamp')]
     closed_trades.sort(key=lambda x: x.get('exit_timestamp', ''))
     
     # Group trades by exit date
@@ -222,7 +222,7 @@ def calculate_trade_duration(trade):
     try:
         entry_time = datetime.strptime(trade.get('timestamp', ''), "%Y-%m-%d %H:%M:%S")
         
-        if trade.get('status') in ['ACTIVE', 'REVIEW']:
+        if trade.get('status') == 'ACTIVE':
             exit_time = datetime.now()
         else:
             exit_time = datetime.strptime(trade.get('exit_timestamp', ''), "%Y-%m-%d %H:%M:%S")
@@ -243,7 +243,7 @@ def calculate_performance_metrics(trades):
     Returns:
         Dictionary with performance metrics
     """
-    closed_trades = [t for t in trades if t.get('status') not in ['ACTIVE', 'REVIEW']]
+    closed_trades = [t for t in trades if t.get('status') != 'ACTIVE']
     
     if not closed_trades:
         return {

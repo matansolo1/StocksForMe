@@ -206,17 +206,17 @@ FUNNEL_TEMPLATE = """
         <div class="doc-card">
             <h4>🛡️ מנגנוני הגנה</h4>
             <ul>
-                <li><strong>תוקף טרייד:</strong> מניה שלא הגיעה ליעד תוך 5 ימי מסחר נכנסת ל-REVIEW להחלפה אפשרית.</li>
                 <li><strong>ניהול סיכונים:</strong> חשיפה של מקסימום 33% מהפורטפוליו לכל פוזיציה.</li>
-                <li><strong>יציאה דינמית:</strong> ה-SL מחושב לפי התנודתיות (Volatility) הספציפית של המניה ב-20 הימים האחרונים.</li>
+                <li><strong>Stop Loss קבוע:</strong> 5% מתחת למחיר הכניסה.</li>
+                <li><strong>Take Profit קבוע:</strong> 10% מעל מחיר הכניסה (יחס 1:2).</li>
             </ul>
         </div>
         <div class="doc-card">
             <h4>📈 חוקי יציאה</h4>
             <ul>
-                <li><strong>HIT_TP:</strong> יציאה אוטומטית כשהמחיר נוגע בממוצע נע 20.</li>
-                <li><strong>HIT_SL:</strong> יציאה להגנה מהפסד בפריצה כלפי מטה של 2 סטיות תקן.</li>
-                <li><strong>SWAP:</strong> החלפת פוזיציה ב-REVIEW אם נמצאה מניה עם דירוג (RankScore) גבוה יותר.</li>
+                <li><strong>HIT_TP:</strong> יציאה אוטומטית ב-+10% רווח.</li>
+                <li><strong>HIT_SL:</strong> יציאה אוטומטית ב--5% הפסד.</li>
+                <li><strong>אין יציאה ידנית:</strong> פוזיציות נסגרות רק ב-SL/TP, ללא מגבלת זמן.</li>
             </ul>
         </div>
     </div>
@@ -360,7 +360,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div>
                 <h3 style="color: white;">Weekly Swap Logic</h3>
-                <p style="color: var(--text-dim); line-height: 1.6;">Every weekend, the scanner identifies new setups. If a stock is in <strong>REVIEW</strong>:<br>1. If a <strong>better setup</strong> is found, the current stock is closed and swapped.<br>2. If <strong>no better setup</strong> is found, it's kept for one more week.<br>3. If SPY is below SMA 200, no new swaps or trades are initiated.</p>
+                <p style="color: var(--text-dim); line-height: 1.6;">Every Sunday evening, the scanner identifies new setups:<br>1. Fills empty position slots (up to 3 total positions).<br>2. Does NOT close existing positions - only SL/TP close positions.<br>3. If SPY is below SMA 200, no new positions are added.<br>4. Run scan on Sunday evening, enter trades Monday morning at market open.</p>
             </div>
         </div>
     </div>
@@ -873,10 +873,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             tr.innerHTML = `
                                 <td style="padding: 8px;"><strong>${s.Ticker}</strong></td>
                                 <td style="padding: 8px;">$${s.Close.toFixed(2)}</td>
-                                <td style="padding: 8px;">$${s.SMA_20.toFixed(2)}</td>
+                                <td style="padding: 8px; color: #ff5252;">$${s.StopLoss.toFixed(2)}</td>
+                                <td style="padding: 8px; color: #39FF14;">$${s.TakeProfit.toFixed(2)}</td>
                                 <td style="padding: 8px; color: #00ffff;">${s.RSI_14.toFixed(1)}</td>
                                 <td style="padding: 8px; color: #39FF14;">${s.RiskReward.toFixed(2)}</td>
-                                <td style="padding: 8px; color: #ff5252;">$${s.StopLoss.toFixed(2)}</td>
                             `;
                             tableBody.appendChild(tr);
                         });
@@ -1002,10 +1002,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             <tr style="border-bottom: 1px solid #262626;">
                                 <th style="text-align: left; padding: 8px; color: #a0a0a0;">Ticker</th>
                                 <th style="text-align: left; padding: 8px; color: #a0a0a0;">Price</th>
-                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">SMA 20</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Stop Loss</th>
+                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Take Profit</th>
                                 <th style="text-align: left; padding: 8px; color: #a0a0a0;">RSI</th>
                                 <th style="text-align: left; padding: 8px; color: #a0a0a0;">Risk/Reward</th>
-                                <th style="text-align: left; padding: 8px; color: #a0a0a0;">Stop Loss</th>
                             </tr>
                         </thead>
                         <tbody id="dryRunResultsTableBody">
@@ -1045,8 +1045,8 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     """
     Generates the final HTML dashboard.
     """
-    active_trades = [t for t in trades if t.get("status") in ["ACTIVE", "REVIEW"]]
-    historical_trades = [t for t in trades if t.get("status") not in ["ACTIVE", "REVIEW"]]
+    active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
+    historical_trades = [t for t in trades if t.get("status") != "ACTIVE"]
     
     show_clearance_btn = False
     from datetime import datetime

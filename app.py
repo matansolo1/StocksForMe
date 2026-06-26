@@ -235,10 +235,10 @@ def scan_stream():
                 top_setups = event["top_setups"]
             yield f"data: {json.dumps(event)}\n\n"
             
-        # Once scan is complete, process swaps and new trades
-        yield f"data: {json.dumps({'progress': 100, 'message': 'Processing swaps and new trades...'})}\n\n"
+        # Once scan is complete, add new trades to fill empty slots
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Adding new trades (filling empty slots)...'})}\n\n"
         
-        trades = trading_logic.process_scanner_swaps(trades, top_setups, position_size_usd=pos_size)
+        # Only add new trades to fill empty slots (matches backtester logic)
         trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
         data_manager.save_trades(trades)
         
@@ -260,28 +260,13 @@ def refresh_tracker():
     subprocess.run(["python", "tracker.py"], env={**os.environ, "FLASK_TRIGGERED": "true"})
     return redirect(url_for('index'))
 
-@app.route('/manual-clearance', methods=['POST'])
-def manual_clearance():
-    import data_manager
-    import ui_generator
-    from datetime import datetime
-    
-    trades = data_manager.load_trades()
-    for t in trades:
-        if t.get("status") in ["ACTIVE", "REVIEW"]:
-            t["status"] = "CLOSED"
-            t["exit_price"] = t.get("current_price", t["entry_price"])
-            t["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-    data_manager.save_trades(trades)
-    ui_generator.generate_dashboard_file(trades)
-    return redirect(url_for('index'))
 
 @app.route('/api/dry-run-stream')
 def dry_run_stream():
     import json
     from flask import Response, request
     import scanner
+    import data_manager
     
     strategy_mode = 'momentum'  # Fixed to momentum strategy
     target_rsi = float(request.args.get('target_rsi', 55.0))
@@ -289,15 +274,25 @@ def dry_run_stream():
     take_profit_pct = float(request.args.get('take_profit_pct', 10.0))
     
     def generate():
+        # Load current active positions to determine how many slots are available
+        trades = data_manager.load_trades()
+        active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
+        slots_available = max(0, 3 - active_count)  # Ensure non-negative
+        
+        # Send initial status message
+        yield f"data: {json.dumps({'progress': 0, 'message': f'Active Positions: {active_count}/3 | Scanning for {slots_available} new setups...', 'active_positions': active_count, 'slots_available': slots_available})}\n\n"
+        
         for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
+            # Limit top_setups to available slots
+            if "top_setups" in event and "complete" in event:
+                # Only limit when scan is complete
+                event["top_setups"] = event["top_setups"][:slots_available]
+                event["active_positions"] = active_count
+                event["slots_available"] = slots_available
             yield f"data: {json.dumps(event)}\n\n"
             
     return Response(generate(), mimetype='text/event-stream')
 
-@app.route('/reset-to-live')
-def reset_to_live():
-    subprocess.run(["python", "tracker.py", "--reset"], env={**os.environ, "FLASK_TRIGGERED": "true"})
-    return redirect(url_for('index'))
 
 @app.route('/api/market-status')
 def market_status():

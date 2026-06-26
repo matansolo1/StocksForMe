@@ -254,7 +254,7 @@ def main():
     print(f"Step 1: Running Market Scan in {strategy_mode} mode...")
     top_setups = scan_universe(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct)
     
-    print("Step 2: Processing Swaps and New Trades...")
+    print("Step 2: Adding New Trades (Filling Empty Slots)...")
     db = data_manager.load_db()
     trades = db["trades"]
     metadata = db["portfolio_metadata"]
@@ -266,7 +266,7 @@ def main():
     else:
         pos_size = total_deposits / 3.0
     
-    trades = trading_logic.process_scanner_swaps(trades, top_setups, position_size_usd=pos_size)
+    # Only add new trades to fill empty slots (matches backtester logic)
     trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size)
     data_manager.save_trades(trades)
     

@@ -150,7 +150,68 @@ The main dashboard now displays 4 metric cards:
 
 ---
 
-## 6. Next Steps / Roadmap
+## 6. Recent Changes & System Alignment (June 2026)
+
+### 6.1 Backtester Alignment & REVIEW Mechanism Removal
+
+**Problem Identified:**
+The live trading system had diverged from the backtester logic, introducing complexity that wasn't tested:
+- **REVIEW mechanism**: Positions that didn't hit TP within 7 days were marked for potential swaps
+- **Weekly swaps**: Scanner would close REVIEW positions and replace them with better setups
+- **Manual clearance**: UI buttons to force-close positions
+
+**Solution Implemented:**
+Complete alignment with backtester logic:
+1. **Removed REVIEW status** - Only ACTIVE and CLOSED statuses exist
+2. **Removed `process_scanner_swaps()`** - No automatic position closures
+3. **Removed manual intervention buttons** - No force-closing positions
+4. **Scanner only fills empty slots** - Up to 3 positions maximum
+5. **Positions close ONLY via SL/TP** - No time limits, no manual exits
+
+**Files Modified:**
+- `trading_logic.py`: Removed REVIEW logic and swap functions
+- `scanner.py`: Removed swap calls, only calls `add_new_trades()`
+- `app.py`: Removed `/manual-clearance` and `/reset-to-live` routes
+- `ui_generator.py`: Updated UI text to reflect new rules
+- `TRADING_RULES.md`: Created comprehensive documentation
+
+### 6.2 Dry Run Scanner Enhancement
+
+**Enhancement:**
+Improved the Dry Run Scanner to provide better visibility and match live scanner behavior:
+
+**Changes:**
+1. **Active Position Awareness**: 
+   - Backend now loads current trades and counts active positions
+   - Calculates available slots: `3 - active_count`
+   - Limits results to available slots only
+
+2. **Enhanced UI Display**:
+   - Initial message: "Active Positions: X/3 | Scanning for Y new setups..."
+   - Table columns reordered: Ticker | Price | **Stop Loss** | **Take Profit** | RSI | Risk/Reward
+   - Color coding: Stop Loss (red), Take Profit (green)
+
+3. **Complete Alignment**:
+   - Uses same `scan_universe_generator()` as live scanner
+   - Shows exactly what would be added to portfolio
+   - Results NOT saved to database (dry run only)
+
+**Files Modified:**
+- `app.py`: Enhanced `/api/dry-run-stream` with position counting
+- `ui_generator.py`: Updated table headers and row generation
+
+### 6.3 Trading Rules Documentation
+
+**Created:** `TRADING_RULES.md`
+- Complete strategy documentation (Momentum Scenario 3)
+- Weekly workflow (Sunday scan → Monday entry)
+- Position management rules
+- Entry/exit criteria
+- FAQ and troubleshooting
+
+---
+
+## 7. Next Steps / Roadmap
 
 * **Multi-threading / Async Scanning**: Speed up the scanning process by fetching ticker data in parallel using thread pools.
 * **Trailing Stop Loss Integration**: Test a dynamic trailing stop for the momentum engine to capture runaway extensions past the 10% target.

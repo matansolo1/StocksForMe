@@ -11,7 +11,7 @@ def check_intraday_stop_loss_take_profit(trades):
     Output: list (updated trades)
     """
     for trade in trades:
-        if trade.get("status") not in ["ACTIVE", "REVIEW"]:
+        if trade.get("status") != "ACTIVE":
             continue
             
         ticker = trade["ticker"]
@@ -94,7 +94,7 @@ def update_portfolio_status(trades):
     
     for trade in trades:
         # Skip trades that were already closed by intraday check
-        if trade.get("status") in ["ACTIVE", "REVIEW"]:
+        if trade.get("status") == "ACTIVE":
             ticker = trade["ticker"]
             current_price = None
             price_source = None
@@ -133,67 +133,20 @@ def update_portfolio_status(trades):
                     trade["status"] = "HIT_SL"
                     trade["exit_price"] = current_price
                     trade["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                elif trade.get("status") == "ACTIVE":
-                    ts_str = trade.get("timestamp")
-                    if ts_str:
-                        entry_date = datetime.strptime(ts_str.split()[0], "%Y-%m-%d")
-                        if (datetime.now() - entry_date).days >= 7:
-                            trade["status"] = "REVIEW"
+                # No time-based status changes - positions stay ACTIVE until SL/TP hit
             else:
                 print(f"❌ {ticker}: לא ניתן לקבל מחיר - מדלג על עדכון")
                 
     return trades
 
-def process_scanner_swaps(trades, new_setups, position_size_usd=None):
-    """
-    Handles swapping REVIEW trades with new scanner setups.
-    Inputs: trades (list), new_setups (list)
-    Output: list (updated trades)
-    """
-    active_trades = [t for t in trades if t.get("status") in ["ACTIVE", "REVIEW"]]
-    review_trades = [t for t in trades if t.get("status") == "REVIEW"]
-    
-    if review_trades:
-        active_tickers = [t['ticker'] for t in active_trades]
-        available_setups = [s for s in new_setups if s['Ticker'] not in active_tickers]
-        
-        for rt in review_trades:
-            if available_setups:
-                new_s = available_setups.pop(0)
-                print(f"Swapping {rt['ticker']} (REVIEW) with {new_s['Ticker']} (NEW)")
-                rt["status"] = "CLOSED_BY_SCANNER"
-                rt["exit_price"] = rt.get("current_price", rt["entry_price"])
-                rt["exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                entry_price = new_s['Close']
-                # If position_size_usd is not provided, we should ideally use 33.3% of portfolio
-                # For now, let's stick to the previous weight logic but allow quantity
-                notion = position_size_usd if position_size_usd else 1000.0 
-                
-                new_trade = {
-                    "ticker": new_s['Ticker'],
-                    "entry_price": entry_price,
-                    "take_profit": new_s.get('TakeProfit', new_s['SMA_20']),
-                    "stop_loss": new_s['StopLoss'],
-                    "risk_reward": new_s['RiskReward'],
-                    "rsi": new_s['RSI_14'],
-                    "status": "ACTIVE",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "weight_pct": rt.get("weight_pct", 33.33),
-                    "quantity": notion / entry_price
-                }
-                trades.append(new_trade)
-            else:
-                print(f"No new setups for {rt['ticker']}. Reverting to ACTIVE.")
-                rt["status"] = "ACTIVE"
-    
-    return trades
 
 def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0):
     """
     Adds new trades from scanner if there's room in the portfolio.
+    Only fills empty slots - does not close existing positions.
+    Matches backtester logic: simple position filling.
     """
-    active_trades = [t for t in trades if t.get("status") in ["ACTIVE", "REVIEW"]]
+    active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
     active_tickers = [t['ticker'] for t in active_trades]
     
     added_any = False
