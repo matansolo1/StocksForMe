@@ -227,8 +227,9 @@ The position sizing logic always divided available cash by 3 (max_positions), re
 2. **`app.py`**: Calculate active position count and pass it to `calculate_position_size()`
 3. **`trading_logic.py`**: Calculate `weight_per_trade = 100 / slots_available` dynamically instead of hardcoded 33.33
 4. **`trades_db.json`**: Retroactive fix for FTNT and ASML trades from 2026-06-28 scan:
-   - FTNT: quantity 7.389 → 11.083, weight 33.33 → 50.0
-   - ASML: quantity 0.623 → 0.935, weight 33.33 → 50.0
+   - FTNT: quantity 7.389 → 10.684, weight 33.33 → 50.0
+   - ASML: quantity 0.623 → 0.901, weight 33.33 → 50.0
+   - Position size: $1,617.07 each (based on actual cash available of $3,234.14)
 
 **New behavior:**
 - 3 empty slots → cash/3 (33.33% weight each) ✓
