@@ -172,6 +172,10 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
     active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
     active_tickers = [t['ticker'] for t in active_trades]
     
+    # Calculate how many slots are available and the weight per new trade
+    slots_available = max_positions - len(active_trades)
+    weight_per_trade = round(100 / slots_available, 2) if slots_available > 0 else 0
+    
     added_any = False
     for s in new_setups:
         if len(active_trades) >= max_positions:
@@ -188,7 +192,7 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "rsi": s['RSI_14'],
                 "status": "ACTIVE",
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "weight_pct": 33.33,
+                "weight_pct": weight_per_trade,
                 "quantity": position_size_usd / entry_price,
                 "commission_entry": commission_per_trade,
                 "commission_exit": 0,  # Will be set when position closes
@@ -198,6 +202,6 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             active_trades.append(trade)
             active_tickers.append(trade['ticker'])
             added_any = True
-            print(f"Added new trade: {trade['ticker']} (Entry commission: ${commission_per_trade})")
+            print(f"Added new trade: {trade['ticker']} (Weight: {weight_per_trade}%, Entry commission: ${commission_per_trade})")
             
     return trades, added_any

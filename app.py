@@ -71,16 +71,29 @@ def run_scan():
 
 @app.route('/execute-scan', methods=['POST'])
 def execute_scan():
-    deposit = float(request.form.get('deposit', 0))
-    strategy_mode = 'momentum'  # Fixed to momentum strategy
+    deposit_amount = float(request.form.get('deposit', 0))
+    deposit_currency = request.form.get('deposit_currency', 'USD')
+    strategy_mode = 'momentum'
     target_rsi = float(request.form.get('target_rsi', 55.0))
     stop_loss_pct = float(request.form.get('stop_loss_pct', 5.0))
     take_profit_pct = float(request.form.get('take_profit_pct', 10.0))
     
-    if deposit > 0:
-        metadata = data_manager.get_metadata()
-        new_total = metadata.get('total_deposits', 0) + deposit
-        data_manager.update_metadata(total_deposits=new_total)
+    if deposit_amount > 0:
+        import currency_manager
+        deposit_info = currency_manager.add_deposit(
+            amount=deposit_amount,
+            currency=deposit_currency,
+            description=f"Weekly scan deposit - {datetime.now().strftime('%Y-%m-%d')}"
+        )
+        deposits_history = currency_manager.load_deposits_history()
+        total_net_usd = deposits_history['metadata']['total_deposits_usd_net']
+        total_gross_usd = deposits_history['metadata']['total_deposits_usd_gross']
+        total_conversion_fees = deposits_history['metadata']['total_conversion_fees_usd']
+        data_manager.update_metadata(
+            total_deposits=total_net_usd,
+            total_deposits_gross=total_gross_usd,
+            total_conversion_fees=total_conversion_fees
+        )
     
     # Instead of running scanner.py as a subprocess and blocking, we render a scanning page
     # that connects to the SSE stream.
@@ -220,8 +233,9 @@ def scan_stream():
         # Calculate portfolio state using analytics_generator
         portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
         
-        # Calculate position size based on available cash (Option A - Conservative)
-        pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
+        # Calculate position size based on available cash and empty slots
+        active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
+        pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3, active_positions=active_count)
         
         if pos_size <= 0:
             yield f"data: {json.dumps({'progress': 0, 'message': 'No cash available for new positions. Close existing trades first.'})}\n\n"
@@ -374,6 +388,17 @@ def api_trade_analytics():
     analytics_data = analytics_generator.prepare_analytics_data(trades, total_deposits)
     
     return jsonify(analytics_data)
+
+
+@app.route('/api/current-fx-rate')
+def api_current_fx_rate():
+    """Get current USD/ILS exchange rate"""
+    import currency_manager
+    rate = currency_manager.get_live_usd_ils_rate()
+    return jsonify({
+        "rate": round(rate, 4),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

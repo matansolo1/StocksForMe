@@ -209,8 +209,40 @@ Improved the Dry Run Scanner to provide better visibility and match live scanner
 - Entry/exit criteria
 - FAQ and troubleshooting
 
----
 
+### 6.4 Position Sizing & Weight Calculation Fix (June 28, 2026)
+
+**Problem Identified:**
+The position sizing logic always divided available cash by 3 (max_positions), regardless of how many slots were actually empty. This caused suboptimal capital deployment.
+
+**Example of the bug:**
+- 1 active position → 2 empty slots
+- Available cash: $3,354.78
+- **Buggy behavior:** Each new trade got $3,354.78 / 3 = $1,118.26 (33.33% weight)
+- **Correct behavior:** Each new trade should get $3,354.78 / 2 = $1,677.39 (50% weight)
+- **Result:** ~$1,118 stayed as idle cash instead of being deployed
+
+**Solution Implemented:**
+1. **`analytics_generator.py`**: Modified `calculate_position_size()` to accept `active_positions` parameter and divide by `slots_available = max_positions - active_positions`
+2. **`app.py`**: Calculate active position count and pass it to `calculate_position_size()`
+3. **`trading_logic.py`**: Calculate `weight_per_trade = 100 / slots_available` dynamically instead of hardcoded 33.33
+4. **`trades_db.json`**: Retroactive fix for FTNT and ASML trades from 2026-06-28 scan:
+   - FTNT: quantity 7.389 → 11.083, weight 33.33 → 50.0
+   - ASML: quantity 0.623 → 0.935, weight 33.33 → 50.0
+
+**New behavior:**
+- 3 empty slots → cash/3 (33.33% weight each) ✓
+- 2 empty slots → cash/2 (50% weight each) ✓
+- 1 empty slot → cash/1 (100% weight) ✓
+
+**Files Modified:**
+- `analytics_generator.py`
+- `app.py`
+- `trading_logic.py`
+- `trades_db.json`
+- `TRADING_RULES.md` (updated position sizing documentation)
+
+---
 ## 7. Next Steps / Roadmap
 
 * **Multi-threading / Async Scanning**: Speed up the scanning process by fetching ticker data in parallel using thread pools.

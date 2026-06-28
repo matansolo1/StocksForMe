@@ -93,7 +93,7 @@
 
 **Formula:**
 ```
-Position Size = Available Cash / 3
+Position Size = Available Cash / Empty Slots
 ```
 
 **Available Cash:**
@@ -101,17 +101,30 @@ Position Size = Available Cash / 3
 Available Cash = Total Deposits + Realized P&L - Invested Capital
 ```
 
-**Example:**
+**Examples:**
+
+**Scenario 1: 0 active positions (3 empty slots)**
 - Total Deposits: $10,000
-- Realized P&L: +$500 (from closed trades)
+- Realized P&L: +$500
+- Invested Capital: $0
+- Available Cash: $10,000 + $500 - $0 = $10,500
+- Position Size: $10,500 / 3 = $3,500 (33.33% weight each)
+
+**Scenario 2: 1 active position (2 empty slots)**
+- Total Deposits: $10,000
+- Realized P&L: +$500
 - Invested Capital: $3,000 (1 active position)
 - Available Cash: $10,000 + $500 - $3,000 = $7,500
-- Position Size: $7,500 / 3 = $2,500
+- Position Size: $7,500 / 2 = $3,750 (50% weight each)
+
+**Scenario 3: 2 active positions (1 empty slot)**
+- Available Cash: $5,000
+- Position Size: $5,000 / 1 = $5,000 (100% weight)
 
 **Dynamic Sizing:**
 - Grows with profits (more capital available)
 - Shrinks with losses (less capital available)
-- Always maintains 3 equal-sized positions
+- Always splits available cash equally among new positions
 
 ---
 

@@ -60,24 +60,30 @@ def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
     }
 
 
-def calculate_position_size(portfolio_state, max_positions=3):
+def calculate_position_size(portfolio_state, max_positions=3, active_positions=0):
     """
     Calculates position size based on available cash (Option A - Conservative).
     
     Args:
         portfolio_state: Dictionary from calculate_portfolio_state
         max_positions: Maximum number of concurrent positions
+        active_positions: Current number of active positions
     
     Returns:
         Position size in USD
     """
     cash_available = portfolio_state['cash_available']
+    slots_available = max(0, max_positions - active_positions)
     
-    if cash_available > 0:
-        position_size = cash_available / max_positions
-    else:
-        position_size = 0
+    
+    if cash_available > 0 and slots_available > 0:
+        position_size = cash_available / slots_available
+    else:
+        position_size = 0
     
+
+    return round(position_size, 2)
+
     return round(position_size, 2)
 
 

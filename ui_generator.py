@@ -315,12 +315,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="color: {{unrealized_color}}; font-size: 0.85rem;">From active positions</div>
         </div>
     </div>
-    <div class="metrics-grid" style="grid-template-columns: 1fr;">
+    <div class="metrics-grid" style="grid-template-columns: 1fr 1fr;">
         <div class="metric-card" style="background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 1px solid #333;">
-            <div class="metric-label" style="color: #f39c12;">💰 TOTAL COMMISSIONS PAID</div>
+            <div class="metric-label" style="color: #f39c12;">💰 TRADING COMMISSIONS</div>
             <div class="metric-value" style="color: #f39c12; font-size: 2rem;">${{total_commissions}}</div>
             <div style="color: var(--text-dim); font-size: 0.85rem;">
-                Commission per trade: ${{commission_per_trade}} | Total trades executed: {{total_trades_count}}
+                ${{commission_per_trade}} per trade | {{total_trades_count}} trades
+            </div>
+        </div>
+        <div class="metric-card" style="background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 1px solid #2ecc71;">
+            <div class="metric-label" style="color: #2ecc71;">💱 CONVERSION FEES</div>
+            <div class="metric-value" style="color: #2ecc71; font-size: 2rem;">${{total_conversion_fees}}</div>
+            <div style="color: var(--text-dim); font-size: 0.85rem;">
+                {{conversion_count}} conversions | Avg: ${{avg_conversion_fee}}
             </div>
         </div>
     </div>
@@ -1101,6 +1108,18 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     total_deposits = metadata.get("total_deposits", 0)
     commission_per_trade = metadata.get("commission_per_trade", 2.5)
     
+    # Load conversion fees from deposits history
+    try:
+        import currency_manager
+        deposits_history = currency_manager.load_deposits_history()
+        total_conversion_fees = deposits_history['metadata'].get('total_conversion_fees_usd', 0.0)
+        conversion_count = deposits_history['metadata'].get('conversion_count', 0)
+        avg_conversion_fee = deposits_history['metadata'].get('avg_conversion_fee', 0.0)
+    except:
+        total_conversion_fees = metadata.get('total_conversion_fees', 0.0)
+        conversion_count = 0
+        avg_conversion_fee = 0.0
+    
     # Calculate portfolio state using analytics_generator
     portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
     
@@ -1179,6 +1198,9 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                        .replace("{{total_commissions}}", f"{total_commissions:,.2f}")\
                        .replace("{{commission_per_trade}}", f"{commission_per_trade:.2f}")\
                        .replace("{{total_trades_count}}", str(total_trades_count))\
+                       .replace("{{total_conversion_fees}}", f"{total_conversion_fees:,.2f}")\
+                       .replace("{{conversion_count}}", str(conversion_count))\
+                       .replace("{{avg_conversion_fee}}", f"{avg_conversion_fee:.2f}")\
                        .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
                        .replace("{{charts_json}}", charts_json)\

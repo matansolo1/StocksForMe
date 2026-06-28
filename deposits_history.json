@@ -1,0 +1,79 @@
+{
+    "deposits": [
+        {
+            "id": 1,
+            "date": "2026-05-24",
+            "description": "Electronic Fund Transfer - Part 1",
+            "amount_ils": 12653.0,
+            "amount_usd": null,
+            "source_currency": "ILS",
+            "converted_to_usd": null,
+            "conversion_fee_usd": 0.0,
+            "fx_rate_at_deposit": null,
+            "is_partial_conversion": true,
+            "notes": "ILS deposit - converted on 2026-05-25"
+        },
+        {
+            "id": 2,
+            "date": "2026-06-14",
+            "description": "Electronic Fund Transfer - Part 2",
+            "amount_ils": 1762.33,
+            "amount_usd": null,
+            "source_currency": "ILS",
+            "converted_to_usd": null,
+            "conversion_fee_usd": 0.0,
+            "fx_rate_at_deposit": null,
+            "is_partial_conversion": true,
+            "notes": "ILS deposit - converted in stages (Jun 15, Jun 19)"
+        },
+        {
+            "id": 3,
+            "date": "2026-06-19",
+            "description": "Consolidated Forex Conversion",
+            "amount_ils": 14415.33,
+            "amount_usd": null,
+            "source_currency": "ILS",
+            "converted_to_usd": 4978.849999999999,
+            "conversion_fee_usd": 10.27,
+            "fx_rate_at_deposit": 2.6860408248348406,
+            "is_partial_conversion": false,
+            "gross_usd": 4989.12,
+            "conversion_details": {
+                "conversion_1": {
+                    "date": "2026-05-25",
+                    "time": "06:38:00",
+                    "quantity_units": 4379,
+                    "fx_rate": 2.8887,
+                    "proceeds_ils": 12649.82,
+                    "commission_usd": 3.45
+                },
+                "conversion_2": {
+                    "date": "2026-06-15",
+                    "time": "10:42:40",
+                    "quantity_units": 208,
+                    "fx_rate": 2.9011,
+                    "proceeds_ils": 603.43,
+                    "commission_usd": 3.42
+                },
+                "conversion_3": {
+                    "date": "2026-06-19",
+                    "time": "02:48:17",
+                    "quantity_units": 387,
+                    "fx_rate": 2.9657,
+                    "proceeds_ils": 147.73,
+                    "commission_usd": 3.4
+                }
+            },
+            "notes": "3 forex conversions | Total commission: $10.27"
+        }
+    ],
+    "metadata": {
+        "total_deposits_ils": 14415.33,
+        "total_deposits_usd_gross": 4989.12,
+        "total_conversion_fees_usd": 10.27,
+        "total_deposits_usd_net": 4978.849999999999,
+        "conversion_count": 3,
+        "avg_conversion_fee": 3.42,
+        "last_updated": "2026-06-28 19:01:35"
+    }
+}
