@@ -75,16 +75,15 @@ def calculate_position_size(portfolio_state, max_positions=3, active_positions=0
     cash_available = portfolio_state['cash_available']
     slots_available = max(0, max_positions - active_positions)
     
-    
-    if cash_available > 0 and slots_available > 0:
-        position_size = cash_available / slots_available
-    else:
-        position_size = 0
     
 
-    return round(position_size, 2)
+    if cash_available > 0 and slots_available > 0:
+        position_size = cash_available / slots_available
+    else:
+        position_size = 0
 
     return round(position_size, 2)
+
 
 
 def calculate_simple_cumulative_return(trades):

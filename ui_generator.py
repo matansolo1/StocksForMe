@@ -4,153 +4,6 @@ import stock_api
 import finance_utils
 import data_manager
 
-FILE_DESCRIPTIONS = {
-    "app.py": "השרת המרכזי (Flask) - מנהל את הראוטינג והממשק האינטרנטי וחושף API לסימולציה.",
-    "ui_generator.py": "מחולל הממשק - אחראי על יצירת ה-HTML, גרף ה-Equity Curve והצגת מדדי ה-Backtest.",
-    "scanner.py": "הסורק השבועי - מחפש הזדמנויות קנייה חדשות בשוק עם פילטר המגמה הגלובלי (SPY SMA 200).",
-    "tracker.py": "מנהל המעקב - מעדכן מחירים חיים ומחשב ביצועים של הפורטפוליו.",
-    "stock_api.py": "ממשק נתונים - מתקשר עם Yahoo Finance להבאת מידע פיננסי.",
-    "trading_logic.py": "לוגיקת המסחר - אחראי על קבלת החלטות (קנייה, מכירה, החלפה).",
-    "data_manager.py": "ניהול נתונים - אחראי על קריאה וכתיבה לקבצי JSON (DB).",
-    "finance_utils.py": "כלי עזר פיננסיים - חישובי RSI, P&L, MWR ומדדים נוספים.",
-    "backtester.py": "מנוע ה-Backtest - מריץ סימולציה של 5 שנים על נתונים היסטוריים עם מטמון מקומי ומנגנון פגיעת SL/TP.",
-    "backtest_data_cache.pkl": "קובץ המטמון של הסימולציה - שומר את נתוני 5 השנים האחרונות לביצועים מהירים ב-0 קריאות API.",
-    "trades_db.json": "מסד הנתונים - מכיל את כל היסטוריית הטריידים וההגדרות.",
-    "tracker_dashboard.html": "הדף הראשי - הקובץ הסופי שמוצג בדפדפן."
-}
-
-STRUCTURE_TEMPLATE = """<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head>
-    <meta charset="utf-8">
-    <title>מפת ארכיטקטורה - Project Structure</title>
-    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg: #0d1117; --card-bg: #161b22; --border: #30363d; --text: #c9d1d9; --text-dim: #8b949e; --accent: #58a6ff; --py-icon: #3776ab; --json-icon: #f1e05a; --stage1: #1f6feb; --stage2: #238636; --stage3: #9e6a03; --stage4: #da3633; }
-        body { background-color: var(--bg); color: var(--text); font-family: 'Assistant', sans-serif; margin: 0; padding: 40px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 900px; }
-        h1 { font-size: 2rem; margin-bottom: 10px; color: var(--accent); text-align: center; }
-        p.subtitle { text-align: center; color: var(--text-dim); margin-bottom: 40px; }
-        .tree-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; }
-        
-        .tree-node { margin-right: 40px; border-right: 2px solid #30363d; padding-right: 20px; position: relative; }
-        .tree-node::before { content: ""; position: absolute; top: 0; right: -2px; width: 20px; height: 2px; background: #30363d; }
-        
-        .tree-item { display: flex; align-items: center; padding: 12px 15px; margin: 8px 0; background: #0d1117; border: 1px solid var(--border); border-radius: 8px; transition: 0.2s; position: relative; }
-        .tree-item:hover { border-color: var(--accent); box-shadow: 0 0 10px rgba(88, 166, 255, 0.1); }
-        
-        .icon { font-size: 1.1rem; margin-left: 12px; }
-        .name { font-family: 'Fira Code', monospace; font-weight: 600; color: var(--accent); margin-left: 15px; min-width: 140px; }
-        .description { color: var(--text-dim); font-size: 0.9rem; flex-grow: 1; }
-        
-        .level-0 { margin-right: 0; border-right: none; }
-        .level-1 { margin-right: 40px; }
-        .level-2 { margin-right: 80px; }
-        
-        .connector { position: absolute; right: -25px; top: 50%; width: 25px; height: 2px; background: var(--border); }
-        .vertical-line { position: absolute; right: -25px; top: -10px; width: 2px; height: calc(100% + 20px); background: var(--border); }
-
-        .back-link { margin-top: 30px; text-decoration: none; color: var(--text-dim); font-size: 0.9rem; transition: 0.3s; }
-        .back-link:hover { color: var(--accent); }
-
-        /* Funnel Styles */
-        .funnel-container { margin-top: 50px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .funnel-stage { display: flex; align-items: center; width: 100%; gap: 30px; }
-        .funnel-shape { height: 60px; position: relative; transition: 0.3s; }
-        .stage-1 .funnel-shape { width: 300px; background: var(--stage1); clip-path: polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%); }
-        .stage-2 .funnel-shape { width: 240px; background: var(--stage2); clip-path: polygon(0% 0%, 100% 0%, 80% 100%, 20% 100%); margin-right: 30px; }
-        .stage-3 .funnel-shape { width: 200px; background: #6f42c1; clip-path: polygon(0% 0%, 100% 0%, 77% 100%, 23% 100%); margin-right: 50px; }
-        .stage-4 .funnel-shape { width: 160px; background: var(--stage3); clip-path: polygon(0% 0%, 100% 0%, 75% 100%, 25% 100%); margin-right: 70px; }
-        .stage-5 .funnel-shape { width: 120px; background: var(--stage4); clip-path: polygon(0% 0%, 100% 0%, 50% 100%, 50% 100%); margin-right: 90px; height: 80px; }
-        .funnel-content { flex: 1; background: var(--card-bg); border: 1px solid var(--border); padding: 15px 25px; border-radius: 12px; }
-        .funnel-content h3 { margin: 0 0 5px 0; color: var(--accent); font-size: 1.1rem; }
-        .funnel-content p { margin: 2px 0; font-size: 0.9rem; color: var(--text-dim); }
-        .funnel-content code { background: #000; padding: 2px 5px; border-radius: 4px; color: #e2e2e2; }
-
-        .strategy-doc { margin-top: 60px; width: 100%; padding: 30px; background: #111; border-radius: 16px; border: 1px solid var(--border); }
-        .doc-card { background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333; }
-        .doc-card h4 { margin-top: 0; color: var(--accent); border-bottom: 1px solid #333; padding-bottom: 10px; }
-        .doc-card ul { padding-right: 20px; margin-bottom: 0; }
-        .doc-card li { margin-bottom: 8px; font-size: 0.9rem; color: var(--text-dim); }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>מפת המערכת</h1>
-        <p class="subtitle">ארכיטקטורה והיררכיית קבצים - Stocks For Me</p>
-        
-        <div class="tree-container">
-            {{tree_content}}
-        </div>
-
-        <h2 style="margin-top: 80px; text-align: center; color: var(--accent);">משפך האסטרטגיה (Strategy Funnel)</h2>
-        <p class="subtitle">כיצד האלגוריתם מזקק את השוק ל-3 הזדמנויות זהב</p>
-        
-        {{funnel_content}}
-
-        <a href="/" class="back-link">→ חזרה לדאשבורד</a>
-    </div>
-</body>
-</html>"""
-
-def generate_structure_html():
-    """
-    Generates a Functional Dependency Tree HTML view.
-    """
-    def create_item(file, level=0):
-        icon = "📄"
-        if file.endswith('.py'): icon = "🐍"
-        elif file.endswith('.json'): icon = "⚙️"
-        elif file.endswith('.html'): icon = "🌐"
-        
-        desc = FILE_DESCRIPTIONS.get(file, "קובץ במערכת")
-        indent = f"margin-right: {level * 40}px;"
-        
-        connector = ""
-        if level > 0:
-            connector = '<div class="connector"></div>'
-
-        return f"""
-        <div class="tree-item" style="{indent}">
-            {connector}
-            <span class="icon">{icon}</span>
-            <span class="name">{file}</span>
-            <span class="description">{desc}</span>
-        </div>"""
-
-    # Functional Tree Structure
-    tree_html = ""
-    
-    # Level 0: App
-    tree_html += create_item("app.py", 0)
-    
-    # Level 1: Main Modules
-    tree_html += create_item("scanner.py", 1)
-    # Level 2 under Scanner
-    tree_html += create_item("stock_api.py", 2)
-    tree_html += create_item("finance_utils.py", 2)
-    tree_html += create_item("trading_logic.py", 2)
-    tree_html += create_item("data_manager.py", 2)
-    
-    tree_html += create_item("backtester.py", 1)
-    # Level 2 under Backtester
-    tree_html += create_item("backtest_data_cache.pkl", 2)
-    tree_html += create_item("finance_utils.py", 2)
-    
-    tree_html += create_item("tracker.py", 1)
-    # Level 2 under Tracker
-    tree_html += create_item("stock_api.py", 2)
-    tree_html += create_item("ui_generator.py", 2)
-    
-    tree_html += create_item("ui_generator.py", 1)
-    # Level 2 under UI
-    tree_html += create_item("tracker_dashboard.html", 2)
-
-    # Level 1: Databases
-    tree_html += create_item("trades_db.json", 1)
-
-    return STRUCTURE_TEMPLATE.replace("{{tree_content}}", tree_html).replace("{{funnel_content}}", FUNNEL_TEMPLATE)
-
 FUNNEL_TEMPLATE = """
 <div class="funnel-container">
     <div class="funnel-stage stage-1">
@@ -331,7 +184,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
         </div>
     </div>
+    <div class="metrics-grid" style="grid-template-columns: 1fr;">
+        <div class="metric-card" style="background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%); border: 1px solid #0038b8;">
+            <div class="metric-label" style="color: #4d94ff;">🇮🇱 TOTAL P&amp;L IN ILS (₪)</div>
+            <div class="metric-value" style="color: {{ils_pnl_color}};">{{ils_pnl_sign}}₪{{ils_pnl_abs}}</div>
+            <div style="color: var(--text-dim); font-size: 0.85rem; margin-top: 5px;">
+                Trading: {{ils_trading_sign}}₪{{ils_trading_abs}} | FX Rate Effect: {{ils_fx_sign}}₪{{ils_fx_abs}}
+            </div>
+            <div style="color: var(--text-dim); font-size: 0.8rem; margin-top: 5px;">
+                Rate: {{ils_buy_rate}}₪ → {{ils_current_rate}}₪ ({{ils_rate_change_sign}}{{ils_rate_change_pct}}%)
+            </div>
+        </div>
+    </div>
     <div class="main-content">
+
         <div class="table-section">
             <h3>Active Positions</h3>
             <table>
@@ -600,7 +466,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <tbody>{{history_rows}}</tbody>
         </table>
     </div>
-    <button id="reset-btn" onclick="resetSystem()">Reset & Start Live Trading</button>
+
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -813,13 +679,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             } catch (e) {}
         }
         
-        function resetSystem() {
-            if (confirm('CRITICAL: This will archive current data and start a fresh LIVE portfolio. Continue?')) {
-                window.location.href = '/reset-to-live';
-            }
-        }
-        
         checkMarket();
+
         setInterval(checkMarket, 60000);
         const firstRow = document.querySelector('.stock-row');
         if (firstRow) firstRow.click();
@@ -1079,30 +940,10 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     """
     active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
     historical_trades = [t for t in trades if t.get("status") != "ACTIVE"]
-    
-    show_clearance_btn = False
-    from datetime import datetime
-    for t in active_trades:
-        ts_str = t.get("timestamp")
-        if ts_str:
-            try:
-                entry_date = datetime.strptime(ts_str.split()[0], "%Y-%m-%d")
-                if (datetime.now() - entry_date).days < 7:
-                    show_clearance_btn = True
-                    break
-            except Exception:
-                pass
 
-    clearance_btn_html = ""
-    if show_clearance_btn:
-        clearance_btn_html = """
-        <form action="/manual-clearance" method="post" style="margin: 0; display: inline-block;">
-            <button type="submit" class="btn" style="background: #ff5252; color: white; border: none; cursor: pointer; padding: 10px 20px; border-radius: 8px; font-weight: 600;" onclick="return confirm('Are you sure you want to manually close all active positions?')">Manual Trade Clearance</button>
-        </form>
-        """
-    
     # Use analytics_generator to calculate portfolio state
     import analytics_generator
+
     
     metadata = data_manager.get_metadata()
     total_deposits = metadata.get("total_deposits", 0)
@@ -1122,6 +963,14 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     
     # Calculate portfolio state using analytics_generator
     portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
+    
+    # Calculate ILS-denominated P&L (trading performance + FX rate movement)
+    try:
+        import currency_manager
+        ils_pnl = currency_manager.calculate_ils_pnl(portfolio_state['current_equity'])
+    except Exception:
+        ils_pnl = {'available': False}
+
     
     current_equity = portfolio_state['current_equity']
     cash_available = portfolio_state['cash_available']
@@ -1181,6 +1030,35 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     # Calculate total trades count (active + closed)
     total_trades_count = len(trades)
     
+    # ILS P&L template variables
+    if ils_pnl.get('available'):
+        ils_total = ils_pnl['total_pnl_ils']
+        ils_trading = ils_pnl['trading_pnl_ils']
+        ils_fx = ils_pnl['fx_pnl_ils']
+        ils_pnl_color = "#39FF14" if ils_total >= 0 else "#ff5252"
+        ils_pnl_sign = "+" if ils_total >= 0 else "-"
+        ils_pnl_abs = f"{abs(ils_total):,.2f}"
+        ils_trading_sign = "+" if ils_trading >= 0 else "-"
+        ils_trading_abs = f"{abs(ils_trading):,.2f}"
+        ils_fx_sign = "+" if ils_fx >= 0 else "-"
+        ils_fx_abs = f"{abs(ils_fx):,.2f}"
+        ils_buy_rate = f"{ils_pnl['buy_rate']:.4f}"
+        ils_current_rate = f"{ils_pnl['current_rate']:.4f}"
+        ils_rate_change_pct = f"{abs(ils_pnl['rate_change_pct']):.2f}"
+        ils_rate_change_sign = "+" if ils_pnl['rate_change_pct'] >= 0 else "-"
+    else:
+        ils_pnl_color = "#a0a0a0"
+        ils_pnl_sign = ""
+        ils_pnl_abs = "N/A"
+        ils_trading_sign = ""
+        ils_trading_abs = "N/A"
+        ils_fx_sign = ""
+        ils_fx_abs = "N/A"
+        ils_buy_rate = "N/A"
+        ils_current_rate = "N/A"
+        ils_rate_change_pct = "0.00"
+        ils_rate_change_sign = ""
+    
     html = HTML_TEMPLATE.replace("{{equity_color}}", equity_color)\
                        .replace("{{current_equity}}", f"{current_equity:,.2f}")\
                        .replace("{{total_deposits}}", f"{total_deposits:,.2f}")\
@@ -1188,6 +1066,17 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                        .replace("{{cash_color}}", cash_color)\
                        .replace("{{cash_available}}", f"{cash_available:,.2f}")\
                        .replace("{{invested_capital}}", f"{invested_capital:,.2f}")\
+                       .replace("{{ils_pnl_color}}", ils_pnl_color)\
+                       .replace("{{ils_pnl_sign}}", ils_pnl_sign)\
+                       .replace("{{ils_pnl_abs}}", ils_pnl_abs)\
+                       .replace("{{ils_trading_sign}}", ils_trading_sign)\
+                       .replace("{{ils_trading_abs}}", ils_trading_abs)\
+                       .replace("{{ils_fx_sign}}", ils_fx_sign)\
+                       .replace("{{ils_fx_abs}}", ils_fx_abs)\
+                       .replace("{{ils_buy_rate}}", ils_buy_rate)\
+                       .replace("{{ils_current_rate}}", ils_current_rate)\
+                       .replace("{{ils_rate_change_pct}}", ils_rate_change_pct)\
+                       .replace("{{ils_rate_change_sign}}", ils_rate_change_sign)\
                        .replace("{{next_position_size}}", f"{next_position_size:,.2f}")\
                        .replace("{{realized_color}}", realized_color)\
                        .replace("{{realized_pnl_sign}}", realized_pnl_sign)\
@@ -1204,7 +1093,8 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                        .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
                        .replace("{{charts_json}}", charts_json)\
-                       .replace("{{clearance_button}}", clearance_btn_html)
+                       .replace("{{clearance_button}}", "")
+
 
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)

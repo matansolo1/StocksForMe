@@ -35,21 +35,8 @@ def calculate_realized_usd(entry_price, exit_price, notion=None, quantity=None):
         return (exit_price - entry_price) * (notion / entry_price)
     return 0
 
-def calculate_portfolio_value(active_trades, total_deposits):
-    """
-    Calculates the current total portfolio value.
-    """
-    # Remaining cash is deposits minus cost of active trades
-    # But wait, we need to track cash specifically. 
-    # For now, let's assume total_deposits is the "Invested Capital" 
-    # and we want to see current liquidation value.
-    
-    current_value = 0
-    # This is complex without full transaction history.
-    # Simpler approach requested: Portfolio P&L is based on ROI vs Deposits.
-    pass
-
 def calculate_mwr(total_deposits, current_equity):
+
     """
     Simple Money-Weighted Return approximation (Total ROI).
     (Current Equity - Total Deposits) / Total Deposits

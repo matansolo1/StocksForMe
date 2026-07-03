@@ -24,6 +24,8 @@ tracker_dashboard.html
 
 # Media / Recordings
 *.mp4
+media/
+
 
 # Cache files
 cache/

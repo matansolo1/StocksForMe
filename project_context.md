@@ -1,252 +1,138 @@
 # Project Context: StocksForMe Stock Scanner
 
-This document serves as the single "Source of Truth" for the StocksForMe Stock Scanner project, capturing the current architecture, implementation details, tech stack, and future roadmap.
+מסמך זה הוא מקור האמת היחיד (Single Source of Truth) לפרויקט - ארכיטקטורה, אסטרטגיית מסחר, כללי הפעלה שבועיים, וממצאי מחקר.
 
 ---
 
-## 1. Current Project Architecture
+## 1. ארכיטקטורת הפרויקט
 
-The project is a lightweight, local stock scanner and portfolio tracker built with Python Flask and Tailwind CSS. It scans a universe of ~100 tickers to identify high-probability swing trading setups based on technical indicators (EMA, RSI, MACD, Volume, and ATR) and manages active trades.
+מערכת קלה (lightweight), מקומית, לסריקת מניות ומעקב פורטפוליו - בנויה עם Python Flask ו-Tailwind CSS. סורקת יקום של כ-100 טיקרים לאיתור הזדמנויות Swing Trading מבוססות אינדיקטורים טכניים (EMA, RSI, MACD, Volume, ATR) ומנהלת עסקאות פעילות.
 
-### Project Structure:
+### מבנה קבצים ותפקידים
+
+* **`app.py`** - נקודת הכניסה של Flask. מגדיר את כל ה-routes:
+    * `/` - הדשבורד הראשי.
+    * `/run-scan`, `/execute-scan` - טופס ותהליך סריקה שבועית.
+    * `/api/scan-stream` - Server-Sent Events (SSE) שמריץ את הסורק בזמן אמת, מוסיף עסקאות חדשות, ומרענן את הדשבורד.
+    * `/api/dry-run-stream` - סריקת ניסיון (dry run) ללא שמירה במסד הנתונים.
+    * `/api/backtest` - מריץ בקטסט week-by-week ומחזיר סטטיסטיקות + עקומת הון.
+    * `/trade-analytics`, `/api/trade-analytics` - דשבורד אנליטיקס.
+    * `/under-the-hood` - תיעוד חי של האסטרטגיה.
+* **`scanner.py`** - מנוע הסריקה. `scan_universe_generator()` - generator שסורק את היקום, כולל פילטר מגמת שוק גלובלי (SPY מעל SMA 200). **אסטרטגיית הייצור היא Momentum בלבד.**
+* **`backtester.py`** - מנוע בקטסט week-by-week על שתי תקופות שוק (Calm/Chaos), עם caching של נתונים היסטוריים (`cache/*.pkl`).
+* **`monte_carlo_backtester.py`** - סימולציית Monte Carlo לקביעת סדר פגיעה ב-SL/TP בתוך יום מסחר בודד, לדיוק גבוה יותר בבקטסט.
+* **`trading_logic.py`** - קביעת קריטריונים טכניים לזיהוי הזדמנויות (Momentum Breakout), עדכון סטטוס פוזיציות (SL/TP), והוספת עסקאות חדשות.
+* **`tracker.py`** / **`data_manager.py`** - ניהול `trades_db.json`: עסקאות פעילות, היסטוריה, ומטא-דאטה של הפורטפוליו.
+* **`currency_manager.py`** - ניהול `deposits_history.json`: הפקדות, המרת ILS→USD, ועמלות המרה.
+* **`ui_generator.py`** - יצירת דשבורד HTML עם Tailwind CSS וגרפי Chart.js/Plotly, כולל "Strategy Cheat Sheet & Robustness Matrix".
+* **`analytics_generator.py`** - חישובי אנליטיקס וניהול מצב פורטפוליו:
+    * `calculate_portfolio_state()` - שווי הון, מזומן זמין, רווח/הפסד ממומש/לא ממומש.
+    * `calculate_position_size()` - גודל פוזיציה לפי מזומן זמין חלקי סלוטים פנויים.
+    * `calculate_simple_cumulative_return()` / `calculate_mwr_cumulative_return()` - תשואה מצטברת (שווה-משקל מול משוקללת-הון).
+    * `prepare_analytics_data()` - מכין את כל הנתונים לדשבורד האנליטיקס.
+* **`stock_api.py`** - ממשק ל-Yahoo Finance (מחירים חיים, נתונים היסטוריים, תוך-יומיים, תאריכי דוחות).
+* **`finance_utils.py`** - פונקציות עזר: `calculate_rsi`, `calculate_pnl_pct`, `calculate_realized_usd`, `calculate_mwr`.
+
+---
+
+## 2. אסטרטגיית הייצור (Momentum Scenario 3 - המנצחת)
+
+1. **פילטר מגמה גלובלי**: עסקאות מתבצעות רק כאשר מדד ה-S&P 500 שורי:
+   $$\text{SPY Close} > \text{SPY SMA}_{200}$$
+
+2. **טריגר כניסה**: RSI 14 חוצה מעל 55 כאשר המחיר מעל SMA 50:
+   $$\text{RSI}_{\text{prev}} < 55 \quad \text{and} \quad \text{RSI}_{\text{current}} \ge 55 \quad \text{and} \quad \text{Price} > \text{SMA}_{50}$$
+
+3. **ניהול סיכונים**: Stop Loss קבוע של 5.0%: $\text{SL} = \text{Price} \times 0.95$
+
+4. **יעד רווח**: Take Profit קבוע של 10.0% (יחס סיכון/סיכוי 1:2): $\text{TP} = \text{Price} \times 1.10$
+
+**ביצועים:** +100.57% בתקופת הכאוס (2021-2026), +232.78% בתקופה הרגועה (2010-2020), Win Rate יציב של ~43% בשני המשטרים. **+567.8%** תשואה מצטברת על פני 16 שנה.
+
+**הערה:** אסטרטגיית Mean Reversion (RSI<30) הוסרה לחלוטין מהקוד והייצור עקב ביצועים גרועים בשווקים תנודתיים (-30.93%).
+
+### טבלת מבחני חוסן (Robustness Matrix)
+
+| Strategy | RSI | SL | TP | Chaos Era | Calm Era | Full (16y) | Max DD |
+|---|---|---|---|---|---|---|---|
+| Mean Reversion | 30 | 3.0% | 6.0% | -30.93% (WR 33.2%) | +63.34% (WR 35.5%) | +12.8% | -38.8%/-44.9% |
+| Momentum (Default) | 60 | 5.0% | 12.0% | -4.88% (WR 31.2%) | +148.73% (WR 37.5%) | +136.6% | -33.5%/-20.6% |
+| Momentum (Scenario 1) | 65 | 4.0% | 12.0% | +12.94% (WR 27.6%) | +198.16% (WR 34.5%) | +236.7% | -27.3%/-19.5% |
+| Momentum (Scenario 2) | 60 | 7.5% | 15.0% | -8.41% (WR 34.0%) | +268.60% (WR 47.0%) | +237.6% | -41.8%/-17.6% |
+| 🏆 **Momentum (Scenario 3)** | **55** | **5.0%** | **10.0%** | **+100.57% (WR 43.1%)** | **+232.78% (WR 43.6%)** | **+567.8%** | -22.0%/-25.4% |
+
+**תובנת המפתח:** תרחיש 3 מציג יציבות Win Rate פנומנלית (43.1% מול 43.6%) בשני משטרי שוק שונים לחלוטין - מעיד על חוסן סטטיסטי גבוה והיעדר Overfitting.
+
+---
+
+## 3. כללי מסחר וזרימת עבודה שבועית (Trading Rules)
+
+### לוח זמנים שבועי (שעון ישראל)
+
+**יום ראשון בערב (21:00-22:00):** הרצת הסורק השבועי
+1. גישה ל-`/run-scan`, בדיקת פרמטרים (ברירת מחדל: RSI=55, SL=5%, TP=10%)
+2. הוספת הפקדה במידת הצורך
+3. הרצת הסריקה (~2-3 דקות) - מנתחת ~100 מניות, מזהה עד 3 הזדמנויות טובות ביותר, וממלאת סלוטים פנויים בלבד (לא סוגרת פוזיציות קיימות)
+
+**יום שני בבוקר (16:30 שעון ישראל = 9:30 בבוקר שעון ניו יורק):** ביצוע בפועל
+1. סקירת ההזדמנויות שהוצעו ביום ראשון
+2. פתיחת Market Orders עבור כל פוזיציה מוצעת
+3. הגדרת Stop Loss ב-Entry × 0.95, Take Profit ב-Entry × 1.10
+
+### כללי יציאה (קריטי!)
+
+פוזיציות נסגרות **רק** כאשר Stop Loss או Take Profit נפגעים. **אין** סגירה לפי זמן, החלטה ידנית, או שינוי תנאי שוק - "תן לרווחים לרוץ, חתוך הפסדים מהר".
+
+### נוסחת גודל פוזיציה
 
 ```
-stocks_for_me/
-├── 📁 archive/              # Old files and archives (demo_archive.json, test files, reports)
-├── 📁 cache/                # Cache files (*.pkl, backtest_5min_cache/)
-├── 📁 output/               # Dynamically generated HTML files (dashboards)
-├── 📁 media/                # Demo videos and screenshots
-├── 📁 data/                 # Production data (trades_db.json)
-├── 📄 app.py                # Flask server - main entry point
-├── 📄 scanner.py            # Weekly scanning engine
-├── 📄 backtester.py         # Backtesting engine
-├── 📄 trading_logic.py      # Trading logic and decisions
-├── 📄 tracker.py            # Portfolio tracking
-├── 📄 ui_generator.py       # HTML interface generation
-├── 📄 analytics_generator.py # Performance calculations
-├── 📄 data_manager.py       # Data management
-├── 📄 stock_api.py          # Yahoo Finance interface
-└── 📄 finance_utils.py      # Financial utilities
+Position Size = Available Cash / Empty Slots
+Available Cash = Total Deposits + Realized P&L - Invested Capital
 ```
 
-**Note:** The project structure was reorganized to separate concerns:
-- **Code files** remain in the root for easy access
-- **Generated files** (cache, output) are in dedicated directories
-- **Archive files** are separated from active development
-- **Media files** are isolated to prevent clutter
+לדוגמה: 1 פוזיציה פעילה (2 סלוטים פנויים), מזומן זמין $7,500 → כל עסקה חדשה מקבלת $3,750 (50% משקל).
 
-### File Breakdown & Responsibilities:
+### הגבלות תפעוליות
 
-* **`app.py`**:
-    * The main Flask application entry point.
-    * Defines web routes:
-        * `/` (Dashboard): Renders the main dashboard UI.
-        * `/execute-scan` (GET): Renders the real-time scanning page with the progress bar and live activity log.
-        * `/api/scan-stream` (GET): Server-Sent Events (SSE) stream route that runs the scanner generator, streams real-time progress/logs, processes swaps, updates portfolio status, and regenerates the dashboard. **Now injects frontend dynamic parameters directly into the CLI scanner process.**
-        * `/api/backtest` (POST): Runs the week-by-week backtester with the customized initial capital and returns statistics + equity curve JSON.
-* **`scanner.py`**:
-    * Contains the core scanning engine.
-    * `scan_universe_generator()`: A generator function that iterates through the stock universe. **Production mode is fixed to `momentum` strategy only.** Includes a global market trend filter of SPY above its SMA 200.
-    * `scan_universe()`: Dynamically parameterized wrapper that consumes the generator and passes parameters.
-    * `main()`: Upgraded to utilize `sys.argv` to capture dynamic parameters passed directly from the Flask UI subprocess.
-* **`backtester.py`**:
-    * The core backtesting engine for week-by-week simulation over different market regimes.
-    * Caches downloaded data in `backtest_data_cache.pkl` to make subsequent runs instantaneous.
-* **`trading_logic.py`**:
-    * Defines the technical criteria for identifying trade setups (Momentum Breakouts only - production strategy).
-* **`tracker.py`** & **`data_manager.py`**: Handles JSON persistence, active trades, history, and automated weekly trade logs.
-* **`ui_generator.py`**:
-    * Generates the HTML dashboard with Tailwind CSS and Chart.js graphs. Includes the persistent **"📊 Strategy Cheat Sheet & Robustness Matrix"** to lock in proven R&D parameters.
-* **`analytics_generator.py`**:
-    * Core analytics and portfolio state management module.
-    * `calculate_portfolio_state()`: Calculates complete portfolio state (equity, cash, realized/unrealized P&L).
-    * `calculate_position_size()`: Determines position size based on available cash (Conservative approach: Cash / 3).
-    * `calculate_simple_cumulative_return()`: Calculates equal-weighted cumulative returns, aggregated by exit date.
-    * `calculate_mwr_cumulative_return()`: Calculates Money-Weighted Return accounting for position sizes.
-    * `prepare_analytics_data()`: Prepares all data for the Trade Analytics dashboard.
-* **`trade_analytics.html`**:
-    * Interactive analytics dashboard with Plotly.js charts.
-    * Displays 8 key performance metrics, cumulative return charts, and advanced filtering options.
+* **פילטר שוק:** הסורק פועל רק כאשר SPY מעל SMA 200. בשוק דובי - אין כניסות חדשות (פוזיציות קיימות ממשיכות לפעול עם SL/TP רגילים).
+* **פילטר דוחות:** מניות עם דוחות כספיים בשבוע הקרוב מוחרגות אוטומטית.
+* **עמלות:** $2.5 לעסקה (כניסה+יציאה), בנוסף עמלת המרה קבועה $10.27 בהפקדות ILS→USD.
+
+### תיקון גודל פוזיציה (יוני 2026)
+
+לוגיקת גודל הפוזיציה תוקנה כך שהיא מחלקת את המזומן הזמין במספר הסלוטים *הפנויים בפועל* (ולא תמיד ב-3 הקבוע). כעת: 3 סלוטים פנויים → cash/3; 2 סלוטים → cash/2; 1 סלוט → cash/1 (100%).
 
 ---
 
-## 2. Production Strategy (Momentum Scenario 3 - The Winner)
+## 4. Trade Analytics & Capital Management
 
-1.  **Global Trend Filter**: Trades are only allowed to be scanned and entered if the S&P 500 ETF is bullish:
-    $$\text{SPY Close} > \text{SPY SMA}_{200}$$
+### מעקב מצב פורטפוליו
+* **Current Equity** = Deposits + Realized P&L + Unrealized P&L
+* **Cash Available** = Deposits + Realized P&L - Invested Capital
+* **Position Sizing** = Cash Available / Max Positions (3)
 
-2.  **Momentum Breakout Mode (Scenario 3 - Production Default)**:
-    * **Trigger**: RSI 14 crosses ABOVE 55 while price is above SMA 50.
-        $$\text{RSI}_{\text{prev}} < 55 \quad \text{and} \quad \text{RSI}_{\text{current}} \ge 55 \quad \text{and} \quad \text{Price} > \text{SMA}_{50}$$
-    * **Risk Management**: Fixed 5.0% Stop Loss.
-        $$\text{SL} = \text{Price} \times 0.95$$
-    * **Profit Target**: Fixed 10.0% Take Profit (Strict 1:2 Risk/Reward Ratio).
-        $$\text{TP} = \text{Price} \times 1.10$$
-    * **Performance**: Achieved +100.57% in Chaos Era (2021-2026) and +232.78% in Calm Era (2010-2020) with a stable 43% win rate across both periods.
+### דשבורד `/trade-analytics`
+מציג 8 מדדי ביצוע מרכזיים (Total Trades, Win Rate, Avg Duration, Profit Factor, Simple Return, MWR Return, SPY Return, Alpha), גרפי Plotly.js (תשואה מצטברת, Duration vs P&L, התפלגות רווח/הפסד), ופילטרים מתקדמים (סטטוס, ביצועים, טווח תאריכים).
 
-**Note**: The Mean Reversion strategy has been **completely removed from the codebase** (deprecated in production) due to poor performance in volatile markets (-30.93% in recent period). All routes, UI elements, and backend logic now exclusively use the Momentum Scenario 3 strategy.
+נתונים מקובצים לפי תאריך יציאה (נקודה אחת ליום) כדי למנוע עומס ויזואלי ולחשב תשואה מצטברת נכונה על פני כל ההיסטוריה.
 
 ---
 
-## 3. SSE & Progress Bar Implementation
+## 5. Server-Sent Events (SSE)
 
-To prevent the UI from freezing during the ~100 ticker scan, a real-time progress bar and live status log are fully operational using **Server-Sent Events (SSE)**.
-
----
-
-## 4. 🔬 Quantitative Research & Robustness Lab Findings
-
-During intensive backtesting across two distinct market eras—the **Calm Era (2010–2020)** and the **Chaos Era (2021–2026)**—we uncovered key insights:
-
-* **The Mean Reversion Failure**: Relying on a raw snapshot of `RSI < 30` caused the system to buy during free-falls ("catching falling knives"), netting a disastrous `-30.93%` return in the Chaos Era. **This strategy has been completely removed from production.**
-* **The Momentum Breakthrough (Scenario 3) - PRODUCTION WINNER**: Lowering the momentum entry bar to `RSI = 55` captured strong trends right as they formed (above SMA 50). Coupled with tight risk management (`SL = 5%`, `TP = 10%`), it proved highly robust, maintaining a perfectly stable **~43.3% Win Rate** across *both* market regimes, generating **`+100.57%`** in the recent volatile years and over **`+567%`** across the full 16-year horizon. **This is now the sole production strategy.**
+כדי למנוע קפיאת ה-UI במהלך סריקת ~100 טיקרים, פס התקדמות ולוג פעילות חי פועלים באמצעות SSE (`/api/scan-stream`, `/api/dry-run-stream`).
 
 ---
 
-## 5. Trade Analytics & Capital Management System
+## 6. Smart Diagnostics for Zero-Setup Scans
 
-### Portfolio State Tracking
-The system now includes comprehensive portfolio state management through `analytics_generator.py`:
-
-* **Current Equity**: `Deposits + Realized P&L + Unrealized P&L`
-* **Cash Available**: `Deposits + Realized P&L - Invested Capital`
-* **Position Sizing**: `Cash Available / Max Positions (3)`
-
-### Capital Management Logic
-The scanner now uses intelligent capital management:
-1. Before opening new positions, calculates available cash from historical trades
-2. If cash is unavailable (all capital deployed), prevents new position entries
-3. Position size dynamically adjusts based on realized P&L from closed trades
-
-### Trade Analytics Dashboard (`/trade-analytics`)
-Interactive analytics page featuring:
-
-**Performance Metrics:**
-- Total Trades, Win Rate, Avg Duration, Profit Factor
-- Simple Return (equal-weighted), MWR Return (capital-weighted)
-- SPY Benchmark comparison, Alpha calculation
-
-**Interactive Charts (Plotly.js):**
-- Cumulative Returns Over Time (Simple, MWR, SPY)
-- Duration vs P&L scatter plot
-- Win/Loss distribution histogram
-
-**Advanced Filtering:**
-- Status (Closed/Active)
-- Performance (All/Winners/Losers)
-- Date range selection
-
-**Data Aggregation:**
-- Trades are aggregated by exit date (one point per day)
-- Prevents visual clutter from multiple trades on same date
-- Cumulative returns calculated correctly across entire history
-
-### Dashboard Integration
-The main dashboard now displays 4 metric cards:
-1. **Portfolio Equity**: Total value with return percentage
-2. **Cash Available**: Free cash + next position size
-3. **Realized P&L**: Profit/loss from closed trades
-4. **Unrealized P&L**: Profit/loss from active positions
+כאשר סריקה מחזירה 0 הזדמנויות, המערכת מציגה אבחון חכם: אחוז מניות שנותחו, כמה חצו RSI, כמה במיקום מחיר תקין, כמה נפסלו עקב דוחות קרובים - עם המלצה מעשית (לחכות, לשנות פרמטרים, וכו').
 
 ---
 
-## 6. Recent Changes & System Alignment (June 2026)
+## 7. Roadmap
 
-### 6.1 Backtester Alignment & REVIEW Mechanism Removal
-
-**Problem Identified:**
-The live trading system had diverged from the backtester logic, introducing complexity that wasn't tested:
-- **REVIEW mechanism**: Positions that didn't hit TP within 7 days were marked for potential swaps
-- **Weekly swaps**: Scanner would close REVIEW positions and replace them with better setups
-- **Manual clearance**: UI buttons to force-close positions
-
-**Solution Implemented:**
-Complete alignment with backtester logic:
-1. **Removed REVIEW status** - Only ACTIVE and CLOSED statuses exist
-2. **Removed `process_scanner_swaps()`** - No automatic position closures
-3. **Removed manual intervention buttons** - No force-closing positions
-4. **Scanner only fills empty slots** - Up to 3 positions maximum
-5. **Positions close ONLY via SL/TP** - No time limits, no manual exits
-
-**Files Modified:**
-- `trading_logic.py`: Removed REVIEW logic and swap functions
-- `scanner.py`: Removed swap calls, only calls `add_new_trades()`
-- `app.py`: Removed `/manual-clearance` and `/reset-to-live` routes
-- `ui_generator.py`: Updated UI text to reflect new rules
-- `TRADING_RULES.md`: Created comprehensive documentation
-
-### 6.2 Dry Run Scanner Enhancement
-
-**Enhancement:**
-Improved the Dry Run Scanner to provide better visibility and match live scanner behavior:
-
-**Changes:**
-1. **Active Position Awareness**: 
-   - Backend now loads current trades and counts active positions
-   - Calculates available slots: `3 - active_count`
-   - Limits results to available slots only
-
-2. **Enhanced UI Display**:
-   - Initial message: "Active Positions: X/3 | Scanning for Y new setups..."
-   - Table columns reordered: Ticker | Price | **Stop Loss** | **Take Profit** | RSI | Risk/Reward
-   - Color coding: Stop Loss (red), Take Profit (green)
-
-3. **Complete Alignment**:
-   - Uses same `scan_universe_generator()` as live scanner
-   - Shows exactly what would be added to portfolio
-   - Results NOT saved to database (dry run only)
-
-**Files Modified:**
-- `app.py`: Enhanced `/api/dry-run-stream` with position counting
-- `ui_generator.py`: Updated table headers and row generation
-
-### 6.3 Trading Rules Documentation
-
-**Created:** `TRADING_RULES.md`
-- Complete strategy documentation (Momentum Scenario 3)
-- Weekly workflow (Sunday scan → Monday entry)
-- Position management rules
-- Entry/exit criteria
-- FAQ and troubleshooting
-
-
-### 6.4 Position Sizing & Weight Calculation Fix (June 28, 2026)
-
-**Problem Identified:**
-The position sizing logic always divided available cash by 3 (max_positions), regardless of how many slots were actually empty. This caused suboptimal capital deployment.
-
-**Example of the bug:**
-- 1 active position → 2 empty slots
-- Available cash: $3,354.78
-- **Buggy behavior:** Each new trade got $3,354.78 / 3 = $1,118.26 (33.33% weight)
-- **Correct behavior:** Each new trade should get $3,354.78 / 2 = $1,677.39 (50% weight)
-- **Result:** ~$1,118 stayed as idle cash instead of being deployed
-
-**Solution Implemented:**
-1. **`analytics_generator.py`**: Modified `calculate_position_size()` to accept `active_positions` parameter and divide by `slots_available = max_positions - active_positions`
-2. **`app.py`**: Calculate active position count and pass it to `calculate_position_size()`
-3. **`trading_logic.py`**: Calculate `weight_per_trade = 100 / slots_available` dynamically instead of hardcoded 33.33
-4. **`trades_db.json`**: Retroactive fix for FTNT and ASML trades from 2026-06-28 scan:
-   - FTNT: quantity 7.389 → 10.684, weight 33.33 → 50.0
-   - ASML: quantity 0.623 → 0.901, weight 33.33 → 50.0
-   - Position size: $1,617.07 each (based on actual cash available of $3,234.14)
-
-**New behavior:**
-- 3 empty slots → cash/3 (33.33% weight each) ✓
-- 2 empty slots → cash/2 (50% weight each) ✓
-- 1 empty slot → cash/1 (100% weight) ✓
-
-**Files Modified:**
-- `analytics_generator.py`
-- `app.py`
-- `trading_logic.py`
-- `trades_db.json`
-- `TRADING_RULES.md` (updated position sizing documentation)
-
----
-## 7. Next Steps / Roadmap
-
-* **Multi-threading / Async Scanning**: Speed up the scanning process by fetching ticker data in parallel using thread pools.
-* **Trailing Stop Loss Integration**: Test a dynamic trailing stop for the momentum engine to capture runaway extensions past the 10% target.
-* **Webhook Notifications**: Add Discord or Telegram webhook alerts when high-probability setups are found.
-* **Enhanced Analytics**: Add drawdown analysis, Sharpe ratio, and trade correlation metrics.
+* Multi-threading / Async Scanning לסריקה מהירה יותר.
+* Trailing Stop Loss למנוע המומנטום.
+* Webhook Notifications (Discord/Telegram) עבור הזדמנויות חדשות.
+* Enhanced Analytics: Drawdown analysis, Sharpe ratio, Trade correlation.
