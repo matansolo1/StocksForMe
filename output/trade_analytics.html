@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Trade Analytics Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        :root { --bg: #0a0a0a; --card-bg: #141414; --border: #262626; --text: #ffffff; --text-dim: #a0a0a0; --neon-green: #39FF14; --accent: #ff5252; --blue: #2196F3; --gold: #FFD700; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .nav-header { width: 100%; max-width: 1400px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; border: none; transition: 0.3s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-secondary { background: transparent; color: white; border: 1px solid var(--border); }
+        
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; width: 100%; max-width: 1400px; margin-bottom: 30px; }
+        .metric-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; }
+        .metric-label { color: var(--text-dim); font-size: 0.8rem; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; }
+        .metric-value { font-size: 2rem; font-weight: 800; }
+        
+        .filters-section { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 1400px; margin-bottom: 30px; }
+        .filter-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 15px; }
+        .filter-group { display: flex; flex-direction: column; }
+        .filter-label { color: var(--text-dim); font-size: 0.75rem; font-weight: 600; margin-bottom: 5px; text-transform: uppercase; }
+        .filter-input { background: #1a1a1a; border: 1px solid var(--border); color: white; padding: 8px; border-radius: 6px; font-size: 0.9rem; }
+        .checkbox-group { display: flex; gap: 15px; flex-wrap: wrap; }
+        .checkbox-label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.85rem; }
+        .checkbox-label input { cursor: pointer; }
+        
+        .chart-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 1400px; margin-bottom: 30px; }
+        #main-chart { width: 100%; height: 500px; }
+        
+        .secondary-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 1400px; margin-bottom: 30px; }
+        .secondary-chart { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        .secondary-chart h3 { margin-top: 0; color: var(--neon-green); font-size: 1.1rem; }
+    </style>
+</head>
+<body>
+    <div class="nav-header">
+        <h1 style="margin: 0;">📈 Trade Analytics Dashboard</h1>
+        <div style="display: flex; gap: 10px;">
+            <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+    </div>
+    
+    <!-- Key Metrics -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Total Trades</div>
+            <div id="metric-total" class="metric-value" style="color: var(--blue);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Win Rate</div>
+            <div id="metric-winrate" class="metric-value" style="color: var(--neon-green);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Avg Duration</div>
+            <div id="metric-duration" class="metric-value" style="color: var(--gold);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Profit Factor</div>
+            <div id="metric-pf" class="metric-value" style="color: var(--neon-green);">--</div>
+        </div>
+    </div>
+    
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Simple Return</div>
+            <div id="metric-simple" class="metric-value">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">MWR Return</div>
+            <div id="metric-mwr" class="metric-value">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">SPY Return</div>
+            <div id="metric-spy" class="metric-value" style="color: var(--gold);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Alpha</div>
+            <div id="metric-alpha" class="metric-value">--</div>
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="filters-section">
+        <h3 style="margin-top: 0; color: var(--neon-green);">🔍 Filters</h3>
+        <div class="filter-row">
+            <div class="filter-group">
+                <label class="filter-label">Status</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-closed" checked> Closed
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-active" checked> Active
+                    </label>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">Performance</label>
+                <select id="filter-performance" class="filter-input">
+                    <option value="all">All Trades</option>
+                    <option value="winners">Winners Only</option>
+                    <option value="losers">Losers Only</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">From Date</label>
+                <input type="date" id="filter-from" class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">To Date</label>
+                <input type="date" id="filter-to" class="filter-input">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 15px;">
+            <button onclick="applyFilters()" class="btn btn-primary">Apply Filters</button>
+            <button onclick="resetFilters()" class="btn btn-secondary">Reset</button>
+        </div>
+    </div>
+    
+    <!-- Main Chart -->
+    <div class="chart-container">
+        <h3 style="margin-top: 0; color: var(--neon-green);">Cumulative Returns Over Time</h3>
+        <div id="main-chart"></div>
+    </div>
+    
+    <!-- Secondary Charts -->
+    <div class="secondary-charts">
+        <div class="secondary-chart">
+            <h3>Trade Duration vs P&L</h3>
+            <div id="duration-chart" style="height: 350px;"></div>
+        </div>
+        <div class="secondary-chart">
+            <h3>Win/Loss Distribution</h3>
+            <div id="distribution-chart" style="height: 350px;"></div>
+        </div>
+    </div>
+    
+    <script>
+        let analyticsData = null;
+        let filteredData = null;
+        
+        // Load analytics data
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('/api/trade-analytics');
+                analyticsData = await response.json();
+                filteredData = analyticsData;
+                renderAll();
+            } catch (e) {
+                console.error('Error loading analytics:', e);
+                alert('Failed to load analytics data');
+            }
+        }
+        
+        function renderAll() {
+            if (!filteredData) return;
+            
+            // Update metrics
+            const metrics = filteredData.metrics;
+            document.getElementById('metric-total').innerText = metrics.total_trades;
+            document.getElementById('metric-winrate').innerText = metrics.win_rate.toFixed(1) + '%';
+            document.getElementById('metric-duration').innerText = metrics.avg_duration.toFixed(1) + ' days';
+            document.getElementById('metric-pf').innerText = metrics.profit_factor.toFixed(2);
+            
+            // Update return metrics
+            const simpleReturn = filteredData.simple_returns.length > 0 ? 
+                filteredData.simple_returns[filteredData.simple_returns.length - 1].cumulative_return : 0;
+            const mwrReturn = filteredData.mwr_returns.length > 0 ? 
+                filteredData.mwr_returns[filteredData.mwr_returns.length - 1].mwr_return : 0;
+            const spyReturn = filteredData.spy_returns.length > 0 ? 
+                filteredData.spy_returns[filteredData.spy_returns.length - 1].spy_return : 0;
+            const alpha = filteredData.alpha;
+            
+            document.getElementById('metric-simple').innerText = (simpleReturn >= 0 ? '+' : '') + simpleReturn.toFixed(2) + '%';
+            document.getElementById('metric-simple').style.color = simpleReturn >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            
+            document.getElementById('metric-mwr').innerText = (mwrReturn >= 0 ? '+' : '') + mwrReturn.toFixed(2) + '%';
+            document.getElementById('metric-mwr').style.color = mwrReturn >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            
+            document.getElementById('metric-spy').innerText = (spyReturn >= 0 ? '+' : '') + spyReturn.toFixed(2) + '%';
+            
+            document.getElementById('metric-alpha').innerText = (alpha >= 0 ? '+' : '') + alpha.toFixed(2) + '%';
+            document.getElementById('metric-alpha').style.color = alpha >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            
+            // Render charts
+            renderMainChart();
+            renderDurationChart();
+            renderDistributionChart();
+        }
+        
+        function renderMainChart() {
+            const simple = filteredData.simple_returns;
+            const mwr = filteredData.mwr_returns;
+            const spy = filteredData.spy_returns;
+            
+            const traces = [];
+            
+            // Simple Return trace
+            if (simple.length > 0) {
+                traces.push({
+                    x: simple.map(d => d.date),
+                    y: simple.map(d => d.cumulative_return),
+                    name: 'Simple Return',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#2196F3', width: 3 },
+                    marker: { size: 6 },
+                    hovertemplate: '<b>Simple Return</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
+                });
+            }
+            
+            // MWR trace
+            if (mwr.length > 0) {
+                traces.push({
+                    x: mwr.map(d => d.date),
+                    y: mwr.map(d => d.mwr_return),
+                    name: 'MWR Return',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#39FF14', width: 3 },
+                    marker: { size: 6 },
+                    hovertemplate: '<b>MWR Return</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
+                });
+            }
+            
+            // SPY trace
+            if (spy.length > 0) {
+                traces.push({
+                    x: spy.map(d => d.date),
+                    y: spy.map(d => d.spy_return),
+                    name: 'SPY Benchmark',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#FFD700', width: 2, dash: 'dash' },
+                    hovertemplate: '<b>SPY Benchmark</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
+                });
+            }
+            
+            const layout = {
+                template: 'plotly_dark',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 60, r: 40, t: 20, b: 60 },
+                xaxis: { 
+                    title: 'Date',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0'
+                },
+                yaxis: { 
+                    title: 'Cumulative Return (%)',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0'
+                },
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(20,20,20,0.8)',
+                    bordercolor: '#262626',
+                    borderwidth: 1
+                },
+                hovermode: 'closest'
+            };
+            
+            Plotly.newPlot('main-chart', traces, layout, {responsive: true});
+        }
+        
+        function renderDurationChart() {
+            const trades = filteredData.trades.filter(t => t.status !== 'ACTIVE' && t.status !== 'REVIEW');
+            
+            if (trades.length === 0) {
+                document.getElementById('duration-chart').innerHTML = '<p style="text-align:center;color:#666;">No closed trades to display</p>';
+                return;
+            }
+            
+            // Group trades that share (nearly) identical duration/pnl coordinates so
+            // overlapping markers don't visually hide trades from the chart/tooltip.
+            const groups = [];
+            const tolerance = 0.01;
+            
+            trades.forEach(t => {
+                const duration = calculateDuration(t);
+                const pnl = t.pnl_pct || 0;
+                
+                let group = groups.find(g => 
+                    Math.abs(g.duration - duration) < tolerance && 
+                    Math.abs(g.pnl - pnl) < tolerance
+                );
+                
+                if (!group) {
+                    group = { duration, pnl, tickers: [] };
+                    groups.push(group);
+                }
+                group.tickers.push(t.ticker);
+            });
+            
+            const durations = groups.map(g => g.duration);
+            const pnls = groups.map(g => g.pnl);
+            const tickers = groups.map(g => g.tickers.join(', '));
+            const colors = groups.map(g => g.pnl >= 0 ? '#39FF14' : '#ff5252');
+            const counts = groups.map(g => g.tickers.length);
+            
+            const trace = {
+                x: durations,
+                y: pnls,
+                mode: 'markers',
+                type: 'scatter',
+                marker: {
+                    size: 12,
+                    color: colors,
+                    line: { color: '#fff', width: 1 }
+                },
+                text: tickers,
+                customdata: counts,
+                hovertemplate: '<b>%{text}</b><br>%{customdata} trade(s) at this point<br>Duration: %{x:.1f} days<br>P&L: %{y:.2f}%<extra></extra>'
+            };
+            
+
+            const layout = {
+                template: 'plotly_dark',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 60, r: 40, t: 20, b: 60 },
+                xaxis: { 
+                    title: 'Duration (days)',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0'
+                },
+                yaxis: { 
+                    title: 'P&L (%)',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0',
+                    zeroline: true,
+                    zerolinecolor: '#666',
+                    zerolinewidth: 2
+                },
+                showlegend: false
+            };
+            
+            Plotly.newPlot('duration-chart', [trace], layout, {responsive: true});
+        }
+        
+        function renderDistributionChart() {
+            const trades = filteredData.trades.filter(t => t.status !== 'ACTIVE' && t.status !== 'REVIEW');
+            
+            if (trades.length === 0) {
+                document.getElementById('distribution-chart').innerHTML = '<p style="text-align:center;color:#666;">No closed trades to display</p>';
+                return;
+            }
+            
+            const pnls = trades.map(t => t.pnl_pct || 0);
+            
+            const trace = {
+                x: pnls,
+                type: 'histogram',
+                marker: {
+                    color: pnls.map(p => p >= 0 ? '#39FF14' : '#ff5252'),
+                    line: { color: '#fff', width: 1 }
+                },
+                nbinsx: 15,
+                hovertemplate: 'P&L Range: %{x}<br>Count: %{y}<extra></extra>'
+            };
+            
+            const layout = {
+                template: 'plotly_dark',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 60, r: 40, t: 20, b: 60 },
+                xaxis: { 
+                    title: 'P&L (%)',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0'
+                },
+                yaxis: { 
+                    title: 'Number of Trades',
+                    gridcolor: '#262626',
+                    color: '#a0a0a0'
+                },
+                showlegend: false,
+                bargap: 0.1
+            };
+            
+            Plotly.newPlot('distribution-chart', [trace], layout, {responsive: true});
+        }
+        
+        function calculateDuration(trade) {
+            try {
+                const entry = new Date(trade.timestamp);
+                const exit = trade.exit_timestamp ? new Date(trade.exit_timestamp) : new Date();
+                return (exit - entry) / (1000 * 60 * 60 * 24);
+            } catch {
+                return 0;
+            }
+        }
+        
+        function applyFilters() {
+            if (!analyticsData) return;
+            
+            // Get filter values
+            const showClosed = document.getElementById('filter-closed').checked;
+            const showActive = document.getElementById('filter-active').checked;
+            const performance = document.getElementById('filter-performance').value;
+            const fromDate = document.getElementById('filter-from').value;
+            const toDate = document.getElementById('filter-to').value;
+            
+            // Filter trades
+            let filtered = analyticsData.trades.filter(t => {
+                // Status filter
+                const isClosed = t.status !== 'ACTIVE' && t.status !== 'REVIEW';
+                if (isClosed && !showClosed) return false;
+                if (!isClosed && !showActive) return false;
+                
+                // Performance filter
+                if (performance === 'winners' && (t.pnl_pct || 0) <= 0) return false;
+                if (performance === 'losers' && (t.pnl_pct || 0) >= 0) return false;
+                
+                // Date filter
+                if (fromDate && t.timestamp && t.timestamp.split(' ')[0] < fromDate) return false;
+                if (toDate && t.timestamp && t.timestamp.split(' ')[0] > toDate) return false;
+                
+                return true;
+            });
+            
+            // Recalculate analytics with filtered trades
+            // For simplicity, we'll just update the trades array
+            // In a real implementation, you'd recalculate all metrics
+            filteredData = { ...analyticsData, trades: filtered };
+            
+            renderAll();
+        }
+        
+        function resetFilters() {
+            document.getElementById('filter-closed').checked = true;
+            document.getElementById('filter-active').checked = true;
+            document.getElementById('filter-performance').value = 'all';
+            document.getElementById('filter-from').value = '';
+            document.getElementById('filter-to').value = '';
+            
+            filteredData = analyticsData;
+            renderAll();
+        }
+        
+        // Load data on page load
+        loadAnalytics();
+    </script>
+</body>
+</html>

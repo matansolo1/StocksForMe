@@ -31,8 +31,8 @@ media/
 cache/
 *.pkl
 
-# Generated output files
-output/
+# Generated output files (dynamic dashboard - regenerated on every run)
+output/tracker_dashboard.html
 
 # Archive
 archive/
