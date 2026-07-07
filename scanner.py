@@ -262,15 +262,23 @@ def main():
     total_deposits = metadata.get("total_deposits", 0)
     commission_per_trade = metadata.get("commission_per_trade", 2.5)
     
-    if total_deposits <= 0:
-        print("Warning: No deposits found. Position sizing will be 0.")
+    active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
+    invested_capital = sum(t.get('quantity', 0) * t.get('entry_price', 0) for t in trades if t.get('status') == 'ACTIVE')
+    cash_available = total_deposits - invested_capital
+
+    if total_deposits <= 0 or cash_available <= 0:
+        print("Warning: No cash available. Position sizing will be 0.")
         pos_size = 0
     else:
-        pos_size = total_deposits / 3.0
+        slots_available = max(0, 3 - active_count)
+        pos_size = cash_available / slots_available if slots_available > 0 else 0
     
-    # Only add new trades to fill empty slots (matches backtester logic)
-    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade)
+    # Only add new trades to fill empty slots (matches backtester logic).
+    # cash_available is passed so add_new_trades can split cash based on the
+    # ACTUAL number of setups found (e.g. 1 setup in an empty portfolio -> 50%).
+    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade, cash_available=cash_available)
     data_manager.save_trades(trades)
+
     
     print("Step 3: Triggering Tracker Update...")
     env = os.environ.copy()

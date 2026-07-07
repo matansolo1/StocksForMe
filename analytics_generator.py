@@ -60,29 +60,49 @@ def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
     }
 
 
-def calculate_position_size(portfolio_state, max_positions=3, active_positions=0):
+def calculate_position_size(portfolio_state, max_positions=3, active_positions=0, num_setups_found=None):
     """
-    Calculates position size based on available cash (Option A - Conservative).
-    
+    Calculates position size based on available cash.
+
+    The divisor used to split available cash is the number of empty slots,
+    UNLESS fewer setups were actually found this week - in that case we
+    divide by the number of setups found (so found capital isn't left idle),
+    but we never divide by less than 2. This means:
+      - Empty portfolio (3 slots) + 1 setup found -> 50% of cash goes to it
+      - Empty portfolio (3 slots) + 2 setups found -> 50/50 split
+      - Empty portfolio (3 slots) + 3 setups found -> 33/33/33 split
+      - 1 active position (2 slots) + 1 setup found -> 50% of remaining cash
+
     Args:
         portfolio_state: Dictionary from calculate_portfolio_state
         max_positions: Maximum number of concurrent positions
         active_positions: Current number of active positions
-    
+        num_setups_found: Number of setups actually found by the scanner this run
+                           (None = unknown yet, fall back to slots_available only)
+
     Returns:
         Position size in USD
     """
     cash_available = portfolio_state['cash_available']
     slots_available = max(0, max_positions - active_positions)
-    
-    
 
-    if cash_available > 0 and slots_available > 0:
-        position_size = cash_available / slots_available
+    if slots_available <= 0 or cash_available <= 0:
+        return 0.0
+
+    if num_setups_found is not None and num_setups_found > 0:
+        # Never divide by less than 2, and never by more than the empty slots
+        divisor = max(2, min(slots_available, num_setups_found))
+        # If there are enough setups to fill ALL empty slots, use the normal
+        # even split across all slots instead of the min-2 floor.
+        if num_setups_found >= slots_available:
+            divisor = slots_available
     else:
-        position_size = 0
+        divisor = slots_available
+
+    position_size = cash_available / divisor
 
     return round(position_size, 2)
+
 
 
 

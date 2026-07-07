@@ -233,7 +233,7 @@ def scan_stream():
         # Calculate portfolio state using analytics_generator
         portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
         
-        # Calculate position size based on available cash and empty slots
+        # Calculate a preliminary position size estimate (used only to check if any cash exists)
         active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
         pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3, active_positions=active_count)
         
@@ -250,12 +250,19 @@ def scan_stream():
                 top_setups = event["top_setups"]
             yield f"data: {json.dumps(event)}\n\n"
             
-        # Once scan is complete, add new trades to fill empty slots
+        # Once scan is complete, add new trades to fill empty slots.
+        # Recalculate position size NOW that we know exactly how many setups were found,
+        # so a single setup found in an empty portfolio gets a fair share of cash
+        # (e.g. 50% instead of a flat 33% split across all 3 slots).
         yield f"data: {json.dumps({'progress': 100, 'message': 'Adding new trades (filling empty slots)...'})}\n\n"
         
-        # Only add new trades to fill empty slots (matches backtester logic)
-        trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade)
+        cash_available = portfolio_state['cash_available']
+        trades, added = trading_logic.add_new_trades(
+            trades, top_setups, position_size_usd=pos_size,
+            commission_per_trade=commission_per_trade, cash_available=cash_available
+        )
         data_manager.save_trades(trades)
+
         
         yield f"data: {json.dumps({'progress': 100, 'message': 'Triggering tracker update...'})}\n\n"
         

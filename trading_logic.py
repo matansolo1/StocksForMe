@@ -156,26 +156,50 @@ def update_portfolio_status(trades):
     return trades
 
 
-def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0, commission_per_trade=2.5):
+def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0, commission_per_trade=2.5,
+                    cash_available=None):
     """
     Adds new trades from scanner if there's room in the portfolio.
     Only fills empty slots - does not close existing positions.
     Matches backtester logic: simple position filling.
-    
+
+    Position sizing: if cash_available is provided, the position size is
+    recalculated based on the ACTUAL number of setups being added this run
+    (capped at the number of empty slots, floored at dividing by 2), instead
+    of using the flat position_size_usd for every trade. This ensures that
+    when fewer opportunities are found than there are empty slots, the
+    available cash isn't left mostly idle (e.g. 1 setup found with an empty
+    3-slot portfolio -> that setup gets 50% of cash instead of 33%).
+
     Args:
         trades: List of existing trades
         new_setups: List of new setup dictionaries from scanner
         max_positions: Maximum concurrent positions
-        position_size_usd: Position size in USD
+        position_size_usd: Fallback/base position size in USD (used if cash_available is None)
         commission_per_trade: Commission per trade in USD (default: $2.5)
+        cash_available: Total cash available in USD to split among new setups (optional)
     """
     active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
     active_tickers = [t['ticker'] for t in active_trades]
-    
-    # Calculate how many slots are available and the weight per new trade
+
     slots_available = max_positions - len(active_trades)
-    weight_per_trade = round(100 / slots_available, 2) if slots_available > 0 else 0
-    
+
+    # Setups that will actually be added (not already active, within slot limit)
+    fillable_setups = [s for s in new_setups if s['Ticker'] not in active_tickers][:max(0, slots_available)]
+    num_setups = len(fillable_setups)
+
+    # Determine position size for this batch
+    if cash_available is not None and num_setups > 0 and slots_available > 0:
+        if num_setups >= slots_available:
+            divisor = slots_available
+        else:
+            divisor = max(2, num_setups)
+        batch_position_size = round(cash_available / divisor, 2) if cash_available > 0 else 0.0
+        weight_per_trade = round(100 / divisor, 2) if divisor > 0 else 0
+    else:
+        batch_position_size = position_size_usd
+        weight_per_trade = round(100 / slots_available, 2) if slots_available > 0 else 0
+
     added_any = False
     for s in new_setups:
         if len(active_trades) >= max_positions:
@@ -193,7 +217,7 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "status": "ACTIVE",
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "weight_pct": weight_per_trade,
-                "quantity": position_size_usd / entry_price,
+                "quantity": batch_position_size / entry_price,
                 "commission_entry": commission_per_trade,
                 "commission_exit": 0,  # Will be set when position closes
                 "total_commission": commission_per_trade  # Will be updated on exit
@@ -202,6 +226,8 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             active_trades.append(trade)
             active_tickers.append(trade['ticker'])
             added_any = True
-            print(f"Added new trade: {trade['ticker']} (Weight: {weight_per_trade}%, Entry commission: ${commission_per_trade})")
+            print(f"Added new trade: {trade['ticker']} (Weight: {weight_per_trade}%, Position: ${batch_position_size}, Entry commission: ${commission_per_trade})")
             
     return trades, added_any
+
+
