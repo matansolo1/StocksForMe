@@ -132,3 +132,142 @@ def reset_db():
         },
         "trades": []
     })
+
+
+def export_user_data():
+    """
+    Bundles ALL user-personal data (trades + deposits history) into a single
+    dictionary, ready to be serialized to JSON and downloaded as a backup file.
+
+    This is the single source of truth for "what belongs to the user" as
+    opposed to code/strategy logic. Used by the /api/export-data route.
+    """
+    import currency_manager
+
+    trades_db = load_db()
+    deposits_history = currency_manager.load_deposits_history()
+
+    return {
+        "backup_format_version": 1,
+        "exported_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "trades_db": trades_db,
+        "deposits_history": deposits_history
+    }
+
+
+BACKUPS_DIR = "backups"
+MAX_PRE_RESTORE_BACKUPS = 3  # how many pre_restore snapshots to keep per file
+
+
+def _files_are_identical(path_a, path_b):
+    """Returns True if both files exist and have identical content."""
+    try:
+        if not (os.path.exists(path_a) and os.path.exists(path_b)):
+            return False
+        with open(path_a, "rb") as fa, open(path_b, "rb") as fb:
+            return fa.read() == fb.read()
+    except Exception:
+        return False
+
+
+def _prune_old_backups(prefix, keep=MAX_PRE_RESTORE_BACKUPS):
+    """
+    Keeps only the most recent `keep` backup files matching the given
+    prefix (e.g. "trades_db.pre_restore_") inside BACKUPS_DIR, deleting
+    older ones.
+    """
+    try:
+        if not os.path.isdir(BACKUPS_DIR):
+            return
+        matching = [
+            f for f in os.listdir(BACKUPS_DIR)
+            if f.startswith(prefix)
+        ]
+        matching.sort(reverse=True)  # timestamps in filename sort chronologically
+        for old_file in matching[keep:]:
+            try:
+                os.remove(os.path.join(BACKUPS_DIR, old_file))
+            except Exception as e:
+                print(f"Warning: could not remove old backup {old_file}: {e}")
+    except Exception as e:
+        print(f"Warning: could not prune old backups for {prefix}: {e}")
+
+
+def _create_pre_restore_backup(source_file, prefix):
+    """
+    Copies `source_file` into BACKUPS_DIR with a timestamped `prefix` name,
+    skipping the copy if it would be identical to the most recent existing
+    backup with the same prefix. Also prunes old backups beyond the retention
+    limit. Returns the path of the created backup, or None if skipped.
+    """
+    if not os.path.exists(source_file):
+        return None
+
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
+
+    existing = sorted(
+        [f for f in os.listdir(BACKUPS_DIR) if f.startswith(prefix)],
+        reverse=True
+    )
+    if existing:
+        latest_backup_path = os.path.join(BACKUPS_DIR, existing[0])
+        if _files_are_identical(source_file, latest_backup_path):
+            # No changes since last backup - skip creating a duplicate
+            return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(BACKUPS_DIR, f"{prefix}{timestamp}.json")
+    shutil.copy2(source_file, backup_path)
+    _prune_old_backups(prefix)
+    return backup_path
+
+
+def import_user_data(backup_data):
+    """
+    Restores user-personal data (trades + deposits history) from a backup
+    dictionary previously produced by export_user_data().
+
+    Before overwriting, the CURRENT state is archived to a timestamped safety
+    file (inside the `backups/` directory) so nothing is lost if the wrong
+    backup is uploaded by mistake. Duplicate/identical backups are skipped,
+    and only the most recent MAX_PRE_RESTORE_BACKUPS snapshots are kept.
+
+    Args:
+        backup_data: dict as produced by export_user_data()
+
+    Returns:
+        (success: bool, message: str)
+    """
+    import currency_manager
+
+    if not isinstance(backup_data, dict):
+        return False, "קובץ הגיבוי אינו תקין (פורמט לא מוכר)."
+
+    trades_db = backup_data.get("trades_db")
+    deposits_history = backup_data.get("deposits_history")
+
+    if trades_db is None or deposits_history is None:
+        return False, "קובץ הגיבוי חסר שדות נדרשים (trades_db / deposits_history)."
+
+    # Basic structural validation
+    if "trades" not in trades_db or "portfolio_metadata" not in trades_db:
+        return False, "קובץ הגיבוי לא תקין: trades_db חסר 'trades' או 'portfolio_metadata'."
+    if "deposits" not in deposits_history or "metadata" not in deposits_history:
+        return False, "קובץ הגיבוי לא תקין: deposits_history חסר 'deposits' או 'metadata'."
+
+    # Safety net: archive current state before overwriting (deduplicated + pruned)
+    try:
+        _create_pre_restore_backup(DB_FILE, "trades_db.pre_restore_")
+        _create_pre_restore_backup(currency_manager.DEPOSITS_FILE, "deposits_history.pre_restore_")
+    except Exception as e:
+        print(f"Warning: could not create pre-restore safety backup: {e}")
+
+    try:
+        save_db(trades_db)
+        currency_manager.save_deposits_history(deposits_history)
+    except Exception as e:
+        return False, f"שגיאה בשחזור הנתונים: {e}"
+
+    return True, "הנתונים שוחזרו בהצלחה! המצב הקודם נשמר כגיבוי בטיחות."
+
+

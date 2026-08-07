@@ -231,3 +231,72 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
     return trades, added_any
 
 
+def close_trade_manually(trades, ticker, exit_price, exit_timestamp=None):
+    """
+    Manually closes an ACTIVE trade (exception to the standard SL/TP-only exit rule).
+    Used for special cases like a sharp after-hours move around earnings, or for
+    closing a position retroactively (backdated exit_timestamp).
+
+    Args:
+        trades: List of existing trades
+        ticker: Ticker symbol of the ACTIVE trade to close
+        exit_price: The price at which the trade is being closed (float)
+        exit_timestamp: Optional string "YYYY-MM-DD HH:MM:SS". Defaults to now()
+                         if not provided (e.g. for a retroactive/backdated close).
+
+    Returns:
+        (trades, success: bool, message: str)
+    """
+    # Find the ACTIVE trade matching this ticker (there should be at most one)
+    target_trade = None
+    for trade in trades:
+        if trade.get("ticker") == ticker and trade.get("status") == "ACTIVE":
+            target_trade = trade
+            break
+
+    if target_trade is None:
+        message = f"לא נמצאה פוזיציה פעילה עבור {ticker}"
+        print(f"❌ close_trade_manually: {message}")
+        return trades, False, message
+
+    try:
+        exit_price = float(exit_price)
+    except (TypeError, ValueError):
+        message = "מחיר יציאה (exit_price) לא תקין"
+        print(f"❌ close_trade_manually: {message}")
+        return trades, False, message
+
+    if exit_price <= 0:
+        message = "מחיר יציאה חייב להיות גדול מ-0"
+        print(f"❌ close_trade_manually: {message}")
+        return trades, False, message
+
+    # Determine exit timestamp - default to now, but allow backdating
+    if exit_timestamp:
+        try:
+            # Validate provided timestamp format
+            datetime.strptime(exit_timestamp, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            message = "פורמט תאריך יציאה לא תקין (נדרש YYYY-MM-DD HH:MM:SS)"
+            print(f"❌ close_trade_manually: {message}")
+            return trades, False, message
+    else:
+        exit_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Update the trade to reflect the manual close
+    target_trade["status"] = "MANUAL_CLOSE"
+    target_trade["exit_price"] = exit_price
+    target_trade["exit_timestamp"] = exit_timestamp
+    target_trade["current_price"] = exit_price
+    target_trade["pnl_pct"] = finance_utils.calculate_pnl_pct(exit_price, target_trade["entry_price"])
+    target_trade["exit_reason"] = "MANUAL_CLOSE"
+
+    # Add exit commission, matching the pattern used by SL/TP auto-close logic
+    commission = target_trade.get("commission_entry", 2.5)
+    target_trade["commission_exit"] = commission
+    target_trade["total_commission"] = target_trade.get("commission_entry", commission) + commission
+
+    message = f"{ticker} נסגר ידנית ב-${exit_price:.2f} (P&L: {target_trade['pnl_pct']:+.2f}%)"
+    print(f"✋ {message}")
+
+    return trades, True, message

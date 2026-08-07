@@ -1,10 +1,12 @@
 from flask import Flask, redirect, url_for, jsonify, render_template_string, request
 import subprocess
 import os
+import json
 from datetime import datetime
 import pytz
 import data_manager
 import ui_generator
+
 
 app = Flask(__name__)
 
@@ -210,8 +212,8 @@ SCANNING_HTML = """
 
 @app.route('/api/scan-stream')
 def scan_stream():
-    import json
     from flask import Response, request
+
     import scanner
     import trading_logic
     import data_manager
@@ -277,6 +279,43 @@ def scan_stream():
         
     return Response(generate(), mimetype='text/event-stream')
 
+@app.route('/api/close-trade', methods=['POST'])
+def api_close_trade():
+    """
+    Manually closes an ACTIVE trade (exception to the standard SL/TP-only exit rule).
+    Used for special cases like a sharp after-hours move around earnings, or for
+    closing a position retroactively with a backdated exit timestamp.
+    Expects JSON: { ticker, exit_price, exit_timestamp (optional) }
+    """
+    import trading_logic
+
+    data = request.get_json() or {}
+    ticker = data.get('ticker')
+    exit_price = data.get('exit_price')
+    exit_timestamp = data.get('exit_timestamp')  # Optional, defaults to now()
+
+    if not ticker or exit_price is None:
+        return jsonify({"success": False, "message": "חסר ticker או exit_price"}), 400
+
+    try:
+        exit_price = float(exit_price)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "exit_price לא תקין"}), 400
+
+    trades = data_manager.load_trades()
+    trades, success, message = trading_logic.close_trade_manually(trades, ticker, exit_price, exit_timestamp)
+
+    if success:
+        data_manager.save_trades(trades)
+        # Recalculate and persist portfolio state (equity, cash available, P&L, etc.)
+        # so the analytics dashboard and cash-available figures are immediately in sync.
+        data_manager.update_portfolio_state(trades)
+        # Regenerate the dashboard so the change is reflected immediately
+        ui_generator.generate_dashboard_file(trades)
+
+    return jsonify({"success": success, "message": message})
+
+
 @app.route('/refresh-tracker')
 def refresh_tracker():
     subprocess.run(["python", "tracker.py"], env={**os.environ, "FLASK_TRIGGERED": "true"})
@@ -285,10 +324,10 @@ def refresh_tracker():
 
 @app.route('/api/dry-run-stream')
 def dry_run_stream():
-    import json
     from flask import Response, request
     import scanner
     import data_manager
+
     
     strategy_mode = 'momentum'  # Fixed to momentum strategy
     target_rsi = float(request.args.get('target_rsi', 55.0))
@@ -407,5 +446,71 @@ def api_current_fx_rate():
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     })
 
+
+@app.route('/api/export-data')
+def api_export_data():
+    """
+    Exports all user-personal data (trades + deposits history) as a single
+    downloadable JSON backup file. Allows moving between computers / users.
+    """
+    from flask import Response
+
+    backup = data_manager.export_user_data()
+    json_str = json.dumps(backup, indent=4, ensure_ascii=False)
+    filename = f"stocksforme_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    return Response(
+        json_str,
+        mimetype='application/json',
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@app.route('/api/import-data', methods=['POST'])
+def api_import_data():
+    """
+    Imports a previously exported backup JSON file, restoring trades and
+    deposits history. Overwrites current data (after archiving it as a
+    safety net) so the user can continue on a different computer.
+    """
+    if 'backup_file' not in request.files:
+        return jsonify({"success": False, "message": "לא נבחר קובץ."}), 400
+
+    file = request.files['backup_file']
+    if not file or file.filename == '':
+        return jsonify({"success": False, "message": "לא נבחר קובץ."}), 400
+
+    try:
+        backup_data = json.load(file.stream)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"קובץ JSON לא תקין: {e}"}), 400
+
+    success, message = data_manager.import_user_data(backup_data)
+
+    if success:
+        # Regenerate the dashboard so the restored data is reflected immediately
+        try:
+            trades = data_manager.load_trades()
+            ui_generator.generate_dashboard_file(trades)
+        except Exception as e:
+            print(f"Warning: could not regenerate dashboard after import: {e}")
+
+    return jsonify({"success": success, "message": message})
+
+
 if __name__ == '__main__':
+    import threading
+    import webbrowser
+
+    def _open_browser():
+        webbrowser.open("http://127.0.0.1:5000")
+
+    # Only auto-open the browser in the actual server process.
+    # Flask's debug reloader spawns a child process; without this check
+    # the browser would open twice (once per process).
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        threading.Timer(1.5, _open_browser).start()
+
     app.run(debug=True, port=5000)
+
+

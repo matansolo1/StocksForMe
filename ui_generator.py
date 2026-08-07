@@ -201,7 +201,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="table-section">
             <h3>Active Positions</h3>
             <table>
-                <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>P&L</th></tr></thead>
+                <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>P&L</th><th>Action</th></tr></thead>
                 <tbody>{{active_rows}}</tbody>
             </table>
         </div>
@@ -467,7 +467,60 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </table>
     </div>
 
+    <!-- Data Management Section (Backup & Restore) -->
+    <div class="explanation-section" style="margin-top: 30px;">
+        <h2 style="color: #a78bfa; margin-top: 0; display: flex; align-items: center; gap: 10px;">
+            <span>🗄️</span> ניהול נתונים (גיבוי ושחזור)
+        </h2>
+        <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">
+            כל הדאטה האישי שלך - עסקאות, פוזיציות פעילות והיסטוריות, עמלות מסחר, הפקדות ועמלות המרת מטבע -
+            מאוחד בקובץ גיבוי יחיד. ניתן להוריד אותו ולהעלות אותו במחשב אחר כדי להמשיך בדיוק מאותה נקודה.
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
+                <h4 style="margin-top: 0; color: white;">💾 גיבוי דאטה</h4>
+                <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
+                    מוריד קובץ JSON יחיד עם כל הטריידים, ההפקדות ועמלות המטבע שלך.
+                </p>
+                <button onclick="downloadBackup()" class="btn btn-primary" style="width: 100%; background: #a78bfa; color: #0a0a0a; font-weight: bold;">
+                    💾 הורד גיבוי דאטה
+                </button>
+            </div>
+            <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
+                <h4 style="margin-top: 0; color: white;">📤 טעינת דאטה</h4>
+                <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
+                    מעלה קובץ גיבוי קודם ומשחזר ממנו את כל הנתונים. <strong style="color: #f39c12;">שים לב:</strong>
+                    זה יחליף את הנתונים הנוכחיים (גיבוי בטיחות אוטומטי נוצר קודם).
+                </p>
+                <input type="file" id="restoreFileInput" accept=".json" style="display: none;" onchange="handleRestoreFileSelected(event)">
+                <button onclick="document.getElementById('restoreFileInput').click()" class="btn btn-secondary" style="width: 100%; border-color: #a78bfa; color: #a78bfa;">
+                    📤 בחר קובץ גיבוי לשחזור
+                </button>
+            </div>
+        </div>
+        <div id="dataManagementStatus" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 0.9rem;"></div>
+    </div>
+
+    <!-- Restore Confirmation Modal -->
+    <div id="restoreConfirmModal" style="display: none; position: fixed; z-index: 1200; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 480px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <h2 style="margin-top: 0; color: #f39c12;">⚠️ אישור שחזור נתונים</h2>
+            <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6;">
+                פעולה זו תחליף את <strong>כל</strong> הטריידים, ההפקדות ועמלות המטבע הנוכחיים בקובץ שנטען.
+            </p>
+            <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
+                המצב הנוכחי יישמר אוטומטית כגיבוי בטיחות בתיקיית <code>backups/</code> לפני ההחלפה (3 גיבויים אחרונים נשמרים), כך שניתן לשחזר ידנית אם טעית.
+
+            </p>
+            <div style="display: flex; justify-content: flex-end; margin-top: 25px; gap: 10px;">
+                <button id="restoreConfirmBtn" onclick="confirmRestoreUpload()" class="btn btn-primary" style="background: #f39c12; color: #0a0a0a; border: none;">כן, החלף נתונים</button>
+                <button onclick="cancelRestoreUpload()" class="btn btn-secondary">ביטול</button>
+            </div>
+        </div>
+    </div>
+
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         const stockData = {{charts_json}};
@@ -708,6 +761,77 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('dryRunModal').style.display = 'none';
         };
 
+        // Manual Close Trade Logic
+        function pad2(n) { return n.toString().padStart(2, '0'); }
+        function nowForDatetimeLocalInput() {
+            const d = new Date();
+            return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        }
+
+        window.openCloseTradeModal = function(ticker, currentPrice) {
+            document.getElementById('closeTradeTicker').innerText = ticker;
+            document.getElementById('closeTradeTickerHidden').value = ticker;
+            document.getElementById('closeTradeExitPrice').value = currentPrice;
+            document.getElementById('closeTradeExitTimestamp').value = nowForDatetimeLocalInput();
+            document.getElementById('closeTradeError').style.display = 'none';
+            document.getElementById('closeTradeError').innerText = '';
+            document.getElementById('closeTradeModal').style.display = 'flex';
+        };
+
+        window.closeCloseTradeModal = function() {
+            document.getElementById('closeTradeModal').style.display = 'none';
+        };
+
+        window.submitCloseTrade = async function() {
+            const ticker = document.getElementById('closeTradeTickerHidden').value;
+            const exitPrice = parseFloat(document.getElementById('closeTradeExitPrice').value);
+            const exitTimestampRaw = document.getElementById('closeTradeExitTimestamp').value; // "YYYY-MM-DDTHH:MM"
+            const errorBox = document.getElementById('closeTradeError');
+            errorBox.style.display = 'none';
+            errorBox.innerText = '';
+
+            if (!ticker || isNaN(exitPrice) || exitPrice <= 0) {
+                errorBox.innerText = 'יש להזין מחיר יציאה תקין.';
+                errorBox.style.display = 'block';
+                return;
+            }
+            if (!exitTimestampRaw) {
+                errorBox.innerText = 'יש להזין תאריך/שעת סגירה.';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            // Convert "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD HH:MM:SS"
+            const exitTimestamp = exitTimestampRaw.replace('T', ' ') + ':00';
+
+            const btn = document.getElementById('closeTradeSubmitBtn');
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+
+            try {
+                const response = await fetch('/api/close-trade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker, exit_price: exitPrice, exit_timestamp: exitTimestamp })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    location.reload();
+                } else {
+                    errorBox.innerText = data.message || 'שגיאה בסגירת הפוזיציה.';
+                    errorBox.style.display = 'block';
+                }
+            } catch (e) {
+                errorBox.innerText = 'שגיאת רשת: ' + e;
+                errorBox.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        };
+
+
         function appendDryRunLog(message) {
             const logBox = document.getElementById('dryRunLog');
             const div = document.createElement('div');
@@ -843,7 +967,76 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             setInterval(autoRefreshPrices, REFRESH_INTERVAL);
             console.log(`🔄 Auto-refresh enabled: every ${REFRESH_INTERVAL / 60000} minutes`);
         })();
+
+        // Data Management: Backup & Restore Logic
+        function showDataManagementStatus(message, isError) {
+            const box = document.getElementById('dataManagementStatus');
+            box.style.display = 'block';
+            box.style.background = isError ? 'rgba(255, 82, 82, 0.15)' : 'rgba(57, 255, 20, 0.15)';
+            box.style.border = isError ? '1px solid #ff5252' : '1px solid #39FF14';
+            box.style.color = isError ? '#ff5252' : '#39FF14';
+            box.innerText = message;
+        }
+
+        function downloadBackup() {
+            window.location.href = '/api/export-data';
+        }
+
+        let pendingRestoreFile = null;
+
+        function handleRestoreFileSelected(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            pendingRestoreFile = file;
+            document.getElementById('restoreConfirmModal').style.display = 'flex';
+        }
+
+        function cancelRestoreUpload() {
+            pendingRestoreFile = null;
+            document.getElementById('restoreFileInput').value = '';
+            document.getElementById('restoreConfirmModal').style.display = 'none';
+        }
+
+        async function confirmRestoreUpload() {
+            if (!pendingRestoreFile) {
+                cancelRestoreUpload();
+                return;
+            }
+
+            const btn = document.getElementById('restoreConfirmBtn');
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+
+            const formData = new FormData();
+            formData.append('backup_file', pendingRestoreFile);
+
+            try {
+                const response = await fetch('/api/import-data', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                document.getElementById('restoreConfirmModal').style.display = 'none';
+                pendingRestoreFile = null;
+                document.getElementById('restoreFileInput').value = '';
+
+                if (data.success) {
+                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showDataManagementStatus('❌ ' + data.message, true);
+                }
+            } catch (e) {
+                showDataManagementStatus('❌ שגיאת רשת: ' + e, true);
+                document.getElementById('restoreConfirmModal').style.display = 'none';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
     </script>
+
 
     <!-- Dry Run Scanner Modal -->
     <div id="dryRunModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
@@ -910,6 +1103,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="display: flex; justify-content: flex-end; margin-top: 25px; gap: 10px;">
                 <button id="dryRunStartBtn" onclick="startDryRun()" class="btn btn-primary" style="background: #39FF14; color: black; border: none;">Start Dry Run</button>
                 <button onclick="closeDryRunModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Close Trade Modal -->
+    <div id="closeTradeModal" style="display: none; position: fixed; z-index: 1100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <span onclick="closeCloseTradeModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #ff5252;">Close Position: <span id="closeTradeTicker"></span></h2>
+            <p style="color: #a0a0a0; font-size: 0.85rem;">סגירה ידנית של פוזיציה פעילה. שימוש למקרי קצה בלבד (תיקון טעויות, סנכרון עם הברוקר).</p>
+            <input type="hidden" id="closeTradeTickerHidden">
+
+            <div style="margin-bottom: 15px; margin-top: 20px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Exit Price ($):</label>
+                <input type="number" id="closeTradeExitPrice" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Exit Date/Time:</label>
+                <input type="datetime-local" id="closeTradeExitTimestamp" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div id="closeTradeError" style="display: none; color: #ff5252; font-size: 0.85rem; margin-bottom: 10px;"></div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px;">
+                <button id="closeTradeSubmitBtn" onclick="submitCloseTrade()" class="btn btn-primary" style="background: #ff5252; color: white; border: none;">Confirm Close</button>
+                <button onclick="closeCloseTradeModal()" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -999,6 +1219,7 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
             <td>${t['entry_price']:.2f}</td>
             <td>${t.get('current_price', 0):.2f}</td>
             <td style="color: {color}; font-weight: bold;">{pnl:+.2f}%</td>
+            <td><button onclick="event.stopPropagation(); openCloseTradeModal('{t['ticker']}', {t.get('current_price', 0)})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #ff5252; color: #ff5252;">Close</button></td>
         </tr>"""
 
     history_rows = ""
@@ -1090,7 +1311,7 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                        .replace("{{total_conversion_fees}}", f"{total_conversion_fees:,.2f}")\
                        .replace("{{conversion_count}}", str(conversion_count))\
                        .replace("{{avg_conversion_fee}}", f"{avg_conversion_fee:.2f}")\
-                       .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="7" style="text-align:center;">No active trades</td></tr>')\
+                       .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="8" style="text-align:center;">No active trades</td></tr>')\
                        .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
                        .replace("{{charts_json}}", charts_json)\
                        .replace("{{clearance_button}}", "")

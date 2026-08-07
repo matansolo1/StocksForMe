@@ -36,3 +36,8 @@ output/tracker_dashboard.html
 
 # Archive
 archive/
+
+# Pre-restore safety backups (created automatically before data restore)
+backups/
+*.pre_restore_*.json
+
