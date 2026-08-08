@@ -24,6 +24,11 @@ DEPOSIT_FORM_HTML = """
         .btn { background: #ff5252; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; font-size: 1.1rem; margin-top: 15px; }
         .param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 10px 0; }
         label { display: block; color: #aaa; font-size: 0.8rem; text-align: left; margin-bottom: 2px; }
+        .deposit-section { text-align: left; margin-top: 15px; border-top: 1px solid #262626; padding-top: 15px; }
+        .currency-toggle { display: flex; gap: 8px; margin: 10px 0; }
+        .currency-toggle label { display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 0.9rem; margin-bottom: 0; cursor: pointer; }
+        .currency-toggle input[type="radio"] { width: auto; margin: 0; }
+        #ils-fields { display: block; }
     </style>
 </head>
 <body>
@@ -44,14 +49,38 @@ DEPOSIT_FORM_HTML = """
                     <input type="number" id="live-tp" name="take_profit_pct" value="10.0" step="0.1">
                 </div>
             </div>
-            
-            <div style="text-align: left; margin-top: 15px;">
-                <label>Deposit Amount (USD) for this week:</label>
+
+            <div class="deposit-section">
+                <label>תאריך ההפקדה:</label>
+                <input type="date" name="deposit_date" id="deposit_date" value="{{ today }}">
+
+                <label style="margin-top: 10px;">סוג הפקדה:</label>
+                <div class="currency-toggle">
+                    <label><input type="radio" name="deposit_currency" value="ILS" checked onchange="toggleDepositFields()"> הפקדה בשקלים (עם המרה)</label>
+                    <label><input type="radio" name="deposit_currency" value="USD" onchange="toggleDepositFields()"> הפקדה ישירה בדולר</label>
+                </div>
+
+                <label id="amount-label">סכום ההפקדה (₪):</label>
                 <input type="number" name="deposit" step="0.01" value="0" autofocus>
+
+                <div id="ils-fields">
+                    <label>עמלת המרה (בדולר):</label>
+                    <input type="number" name="conversion_fee" id="conversion_fee" step="0.01" value="{{ default_deposit_fee }}">
+                    <div style="color:#777; font-size:0.75rem; margin-top:-6px;">שער הדולר לתאריך שנבחר יימשך אוטומטית.</div>
+                </div>
             </div>
             <button type="submit" class="btn">Confirm & Run Scan</button>
         </form>
     </div>
+
+    <script>
+        function toggleDepositFields() {
+            const isIls = document.querySelector('input[name="deposit_currency"]:checked').value === 'ILS';
+            document.getElementById('ils-fields').style.display = isIls ? 'block' : 'none';
+            document.getElementById('amount-label').innerText = isIls ? 'סכום ההפקדה (₪):' : 'סכום ההפקדה ($):';
+        }
+        toggleDepositFields();
+    </script>
 </body>
 </html>
 """
@@ -69,12 +98,17 @@ def index():
 
 @app.route('/run-scan')
 def run_scan():
-    return render_template_string(DEPOSIT_FORM_HTML)
+    import currency_manager
+    default_fee = currency_manager.get_default_deposit_fee()
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    return render_template_string(DEPOSIT_FORM_HTML, default_deposit_fee=default_fee, today=today_str)
 
 @app.route('/execute-scan', methods=['POST'])
 def execute_scan():
     deposit_amount = float(request.form.get('deposit', 0))
     deposit_currency = request.form.get('deposit_currency', 'USD')
+    deposit_date = request.form.get('deposit_date') or datetime.now().strftime('%Y-%m-%d')
+    conversion_fee_raw = request.form.get('conversion_fee')
     strategy_mode = 'momentum'
     target_rsi = float(request.form.get('target_rsi', 55.0))
     stop_loss_pct = float(request.form.get('stop_loss_pct', 5.0))
@@ -82,10 +116,20 @@ def execute_scan():
     
     if deposit_amount > 0:
         import currency_manager
+
+        conversion_fee = None
+        if deposit_currency.upper() == 'ILS' and conversion_fee_raw not in (None, ''):
+            try:
+                conversion_fee = float(conversion_fee_raw)
+            except (TypeError, ValueError):
+                conversion_fee = None
+
         deposit_info = currency_manager.add_deposit(
             amount=deposit_amount,
             currency=deposit_currency,
-            description=f"Weekly scan deposit - {datetime.now().strftime('%Y-%m-%d')}"
+            date=deposit_date,
+            conversion_fee=conversion_fee,
+            description=f"Weekly scan deposit - {deposit_date}"
         )
         deposits_history = currency_manager.load_deposits_history()
         total_net_usd = deposits_history['metadata']['total_deposits_usd_net']
@@ -447,6 +491,105 @@ def api_current_fx_rate():
     })
 
 
+@app.route('/api/deposits')
+def api_get_deposits():
+    """Returns all deposit records plus the current default FX rate and default deposit fee."""
+    import currency_manager
+    deposits = currency_manager.get_all_deposits()
+    default_rate = currency_manager.get_default_fx_rate()
+    default_fee = currency_manager.get_default_deposit_fee()
+    return jsonify({
+        "deposits": deposits,
+        "default_fx_rate": default_rate,
+        "default_deposit_fee_usd": default_fee
+    })
+
+
+@app.route('/api/deposits/<int:deposit_id>', methods=['POST'])
+def api_update_deposit(deposit_id):
+    """Edits an existing deposit's date/amount/fx_rate/description/conversion_fee."""
+    import currency_manager
+    data = request.get_json() or {}
+
+    success, message = currency_manager.update_deposit(
+        deposit_id,
+        date=data.get('date'),
+        amount=data.get('amount'),
+        fx_rate=data.get('fx_rate'),
+        description=data.get('description'),
+        conversion_fee=data.get('conversion_fee')
+    )
+
+    if success:
+        try:
+            trades = data_manager.load_trades()
+            ui_generator.generate_dashboard_file(trades)
+        except Exception as e:
+            print(f"Warning: could not regenerate dashboard after deposit update: {e}")
+
+    return jsonify({"success": success, "message": message})
+
+
+@app.route('/api/deposits/<int:deposit_id>', methods=['DELETE'])
+def api_delete_deposit(deposit_id):
+    """Deletes an existing deposit record."""
+    import currency_manager
+    success, message = currency_manager.delete_deposit(deposit_id)
+
+    if success:
+        try:
+            trades = data_manager.load_trades()
+            ui_generator.generate_dashboard_file(trades)
+        except Exception as e:
+            print(f"Warning: could not regenerate dashboard after deposit delete: {e}")
+
+    return jsonify({"success": success, "message": message})
+
+
+@app.route('/api/default-fx-rate', methods=['POST'])
+def api_update_default_fx_rate():
+    """Updates the user-editable default FX rate used for deposits with a missing rate."""
+    import currency_manager
+    data = request.get_json() or {}
+    new_rate = data.get('rate')
+
+    if new_rate is None:
+        return jsonify({"success": False, "message": "חסר rate."}), 400
+
+    try:
+        updated_rate = currency_manager.update_default_fx_rate(new_rate)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "rate לא תקין."}), 400
+
+    try:
+        trades = data_manager.load_trades()
+        ui_generator.generate_dashboard_file(trades)
+    except Exception as e:
+        print(f"Warning: could not regenerate dashboard after default fx rate update: {e}")
+
+    return jsonify({"success": True, "message": "שער ברירת המחדל עודכן בהצלחה.", "default_fx_rate": updated_rate})
+
+
+@app.route('/api/default-deposit-fee', methods=['POST'])
+def api_update_default_deposit_fee():
+    """Updates the user-editable default deposit/conversion fee (USD) used
+    to pre-fill new ILS deposits (still editable per-deposit)."""
+    import currency_manager
+    data = request.get_json() or {}
+    new_fee = data.get('fee')
+
+    if new_fee is None:
+        return jsonify({"success": False, "message": "חסר fee."}), 400
+
+    try:
+        updated_fee = currency_manager.update_default_deposit_fee(new_fee)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "fee לא תקין."}), 400
+
+    return jsonify({"success": True, "message": "עמלת ברירת המחדל עודכנה בהצלחה.", "default_deposit_fee_usd": updated_fee})
+
+
+
 @app.route('/api/export-data')
 def api_export_data():
     """
@@ -512,5 +655,3 @@ if __name__ == '__main__':
         threading.Timer(1.5, _open_browser).start()
 
     app.run(debug=True, port=5000)
-
-

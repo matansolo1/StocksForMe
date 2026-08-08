@@ -194,8 +194,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div style="color: var(--text-dim); font-size: 0.8rem; margin-top: 5px;">
                 Rate: {{ils_buy_rate}}₪ → {{ils_current_rate}}₪ ({{ils_rate_change_sign}}{{ils_rate_change_pct}}%)
             </div>
+            <button onclick="openFxManagementModal()" class="btn btn-secondary" style="margin-top: 12px; border-color: #4d94ff; color: #4d94ff; padding: 6px 14px; font-size: 0.8rem;">
+                ✏️ ניהול הפקדות ושערי המרה
+            </button>
         </div>
     </div>
+
     <div class="main-content">
 
         <div class="table-section">
@@ -1035,7 +1039,254 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 btn.style.opacity = '1';
             }
         }
+
+        // FX / Deposits Management Logic
+        function showDepositsManagementStatus(message, isError) {
+            const box = document.getElementById('depositsManagementStatus');
+            box.style.display = 'block';
+            box.style.background = isError ? 'rgba(255, 82, 82, 0.15)' : 'rgba(57, 255, 20, 0.15)';
+            box.style.border = isError ? '1px solid #ff5252' : '1px solid #39FF14';
+            box.style.color = isError ? '#ff5252' : '#39FF14';
+            box.innerText = message;
+        }
+
+        window.openFxManagementModal = async function() {
+            document.getElementById('fxManagementModal').style.display = 'flex';
+            document.getElementById('depositsManagementStatus').style.display = 'none';
+            await loadDepositsTable();
+        };
+
+        window.closeFxManagementModal = function() {
+            document.getElementById('fxManagementModal').style.display = 'none';
+        };
+
+        async function loadDepositsTable() {
+            const tbody = document.getElementById('depositsTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">טוען...</td></tr>';
+            try {
+                const response = await fetch('/api/deposits');
+                const data = await response.json();
+
+                document.getElementById('defaultFxRateInput').value = data.default_fx_rate || '';
+                document.getElementById('defaultDepositFeeInput').value = (data.default_deposit_fee_usd != null) ? data.default_deposit_fee_usd : '';
+
+                if (!data.deposits || data.deposits.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">אין הפקדות רשומות.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = '';
+                data.deposits.forEach(dep => {
+                    const currency = dep.source_currency || 'USD';
+                    const amount = currency === 'ILS' ? dep.amount_ils : dep.amount_usd;
+                    const rate = dep.fx_rate_at_deposit;
+                    const netUsd = dep.converted_to_usd;
+                    const fee = dep.conversion_fee_usd;
+
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = '1px solid #262626';
+                    tr.innerHTML = `
+                        <td style="padding: 8px;">${dep.date || ''}</td>
+                        <td style="padding: 8px;">${dep.description || ''}</td>
+                        <td style="padding: 8px; text-align: center;">${currency}</td>
+                        <td style="padding: 8px; text-align: right;">${amount != null ? amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '--'}</td>
+                        <td style="padding: 8px; text-align: right; ${rate ? '' : 'color: #f39c12;'}">${rate ? rate.toFixed(4) : 'חסר (ברירת מחדל)'}</td>
+                        <td style="padding: 8px; text-align: right;">${currency === 'ILS' ? (fee != null ? '$' + fee.toFixed(2) : '--') : '--'}</td>
+                        <td style="padding: 8px; text-align: right;">${netUsd != null ? netUsd.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '--'}</td>
+                        <td style="padding: 8px; text-align: center;">
+                            <button onclick="openEditDepositModal(${dep.id})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #4d94ff; color: #4d94ff;">✏️ ערוך</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 15px; color: #ff5252;">שגיאה בטעינת נתונים: ${e}</td></tr>`;
+            }
+        }
+
+        window.saveDefaultFxRate = async function() {
+            const input = document.getElementById('defaultFxRateInput');
+            const statusEl = document.getElementById('defaultFxRateStatus');
+            const rate = parseFloat(input.value);
+
+            if (isNaN(rate) || rate <= 0) {
+                statusEl.style.color = '#ff5252';
+                statusEl.innerText = 'יש להזין שער תקין.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/default-fx-rate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rate: rate })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    statusEl.style.color = '#39FF14';
+                    statusEl.innerText = '✅ נשמר!';
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    statusEl.style.color = '#ff5252';
+                    statusEl.innerText = '❌ ' + data.message;
+                }
+            } catch (e) {
+                statusEl.style.color = '#ff5252';
+                statusEl.innerText = '❌ שגיאת רשת: ' + e;
+            }
+        };
+
+        window.saveDefaultDepositFee = async function() {
+            const input = document.getElementById('defaultDepositFeeInput');
+            const statusEl = document.getElementById('defaultDepositFeeStatus');
+            const fee = parseFloat(input.value);
+
+            if (isNaN(fee) || fee < 0) {
+                statusEl.style.color = '#ff5252';
+                statusEl.innerText = 'יש להזין עמלה תקינה.';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/default-deposit-fee', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fee: fee })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    statusEl.style.color = '#39FF14';
+                    statusEl.innerText = '✅ נשמר!';
+                    setTimeout(() => { statusEl.innerText = ''; }, 2000);
+                } else {
+                    statusEl.style.color = '#ff5252';
+                    statusEl.innerText = '❌ ' + data.message;
+                }
+            } catch (e) {
+                statusEl.style.color = '#ff5252';
+                statusEl.innerText = '❌ שגיאת רשת: ' + e;
+            }
+        };
+
+        let currentEditDeposit = null;
+
+        window.openEditDepositModal = async function(depositId) {
+            try {
+                const response = await fetch('/api/deposits');
+                const data = await response.json();
+                const dep = (data.deposits || []).find(d => d.id === depositId);
+                if (!dep) {
+                    alert('הפקדה לא נמצאה.');
+                    return;
+                }
+                currentEditDeposit = dep;
+
+                const currency = dep.source_currency || 'USD';
+                const amount = currency === 'ILS' ? dep.amount_ils : dep.amount_usd;
+
+                document.getElementById('editDepositId').value = dep.id;
+                document.getElementById('editDepositDate').value = dep.date || '';
+                document.getElementById('editDepositAmount').value = amount != null ? amount : '';
+                document.getElementById('editDepositCurrencyLabel').innerText = currency;
+                document.getElementById('editDepositFxRate').value = dep.fx_rate_at_deposit || '';
+
+                const feeRow = document.getElementById('editDepositFeeRow');
+                if (currency === 'ILS') {
+                    feeRow.style.display = 'block';
+                    document.getElementById('editDepositFee').value = (dep.conversion_fee_usd != null) ? dep.conversion_fee_usd : '';
+                } else {
+                    feeRow.style.display = 'none';
+                }
+
+                document.getElementById('editDepositError').style.display = 'none';
+
+                document.getElementById('editDepositModal').style.display = 'flex';
+            } catch (e) {
+                alert('שגיאה בטעינת הפקדה: ' + e);
+            }
+        };
+
+        window.closeEditDepositModal = function() {
+            document.getElementById('editDepositModal').style.display = 'none';
+            currentEditDeposit = null;
+        };
+
+        window.submitEditDeposit = async function() {
+            const depositId = parseInt(document.getElementById('editDepositId').value);
+            const date = document.getElementById('editDepositDate').value;
+            const amount = parseFloat(document.getElementById('editDepositAmount').value);
+            const fxRateRaw = document.getElementById('editDepositFxRate').value;
+            const fxRate = fxRateRaw ? parseFloat(fxRateRaw) : null;
+            const feeRaw = document.getElementById('editDepositFee').value;
+            const feeRowVisible = document.getElementById('editDepositFeeRow').style.display !== 'none';
+            const conversionFee = (feeRowVisible && feeRaw !== '') ? parseFloat(feeRaw) : null;
+            const errorBox = document.getElementById('editDepositError');
+            errorBox.style.display = 'none';
+
+            if (isNaN(amount) || amount <= 0) {
+                errorBox.innerText = 'יש להזין סכום תקין.';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            const btn = document.getElementById('editDepositSubmitBtn');
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+
+            try {
+                const payload = { date: date, amount: amount, fx_rate: fxRate };
+                if (conversionFee !== null) {
+                    payload.conversion_fee = conversionFee;
+                }
+                const response = await fetch(`/api/deposits/${depositId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    closeEditDepositModal();
+                    closeFxManagementModal();
+                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    errorBox.innerText = data.message || 'שגיאה בעדכון ההפקדה.';
+                    errorBox.style.display = 'block';
+                }
+            } catch (e) {
+                errorBox.innerText = 'שגיאת רשת: ' + e;
+                errorBox.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        };
+
+        window.deleteDepositFromModal = async function() {
+            const depositId = parseInt(document.getElementById('editDepositId').value);
+            if (!confirm('האם אתה בטוח שברצונך למחוק הפקדה זו? פעולה זו אינה הפיכה.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/deposits/${depositId}`, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (data.success) {
+                    closeEditDepositModal();
+                    closeFxManagementModal();
+                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alert('❌ ' + data.message);
+                }
+            } catch (e) {
+                alert('❌ שגיאת רשת: ' + e);
+            }
+        };
     </script>
+
 
 
     <!-- Dry Run Scanner Modal -->
@@ -1107,8 +1358,101 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- FX / Deposits Management Modal -->
+    <div id="fxManagementModal" style="display: none; position: fixed; z-index: 1150; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 950px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
+            <span onclick="closeFxManagementModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #4d94ff;">✏️ ניהול הפקדות ושערי המרה</h2>
+
+            <!-- Default FX Rate + Default Deposit Fee Section -->
+            <div style="background: #1c1c1c; padding: 18px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px;">
+                <h4 style="margin-top: 0; color: white; font-size: 0.95rem;">שער ברירת מחדל (עבור הפקדות ללא שער רשום)</h4>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="number" id="defaultFxRateInput" step="0.0001" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 180px; font-size: 1rem; box-sizing: border-box;">
+                    <button onclick="saveDefaultFxRate()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 שמור שער</button>
+                    <span id="defaultFxRateStatus" style="font-size: 0.85rem; margin-right: 10px;"></span>
+                </div>
+
+                <h4 style="margin-top: 18px; color: white; font-size: 0.95rem;">עמלת הפקדה/המרה - ברירת מחדל (בדולר, עבור הפקדות שקליות חדשות)</h4>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="number" id="defaultDepositFeeInput" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 180px; font-size: 1rem; box-sizing: border-box;">
+                    <button onclick="saveDefaultDepositFee()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 שמור עמלה</button>
+                    <span id="defaultDepositFeeStatus" style="font-size: 0.85rem; margin-right: 10px;"></span>
+                </div>
+                <div style="color:#777; font-size:0.75rem; margin-top: 8px;">שער הדולר לכל הפקדה נמשך אוטומטית מתאריך ההפקדה (או שער ברירת המחדל אם אין שער היסטורי). ניתן לעדכן את עמלת ההפקדה בכל זמן, וכל ההפקדות הקיימות/ההיסטוריה יסונכרנו בהתאם.</div>
+            </div>
+
+            <!-- Deposits Table -->
+            <div style="overflow-x: auto; max-height: 400px; overflow-y: auto; border: 1px solid #262626; border-radius: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #262626; background: #1a1a1a; position: sticky; top: 0;">
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">תאריך</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">תיאור</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">מטבע</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">סכום</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">שער המרה</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">עמלת המרה</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">נטו (USD)</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">פעולה</th>
+                        </tr>
+                    </thead>
+                    <tbody id="depositsTableBody">
+                        <tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">טוען...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="depositsManagementStatus" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 0.9rem;"></div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px;">
+                <button onclick="closeFxManagementModal()" class="btn btn-secondary">סגור</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Deposit Modal -->
+    <div id="editDepositModal" style="display: none; position: fixed; z-index: 1200; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
+            <span onclick="closeEditDepositModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #4d94ff;">✏️ עריכת הפקדה</h2>
+            <input type="hidden" id="editDepositId">
+
+            <div style="margin-bottom: 15px; margin-top: 20px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">תאריך:</label>
+                <input type="date" id="editDepositDate" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סכום (<span id="editDepositCurrencyLabel">USD</span>):</label>
+                <input type="number" id="editDepositAmount" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">שער המרה (השאר ריק לשימוש בברירת מחדל):</label>
+                <input type="number" id="editDepositFxRate" step="0.0001" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div id="editDepositFeeRow" style="margin-bottom: 15px; display: none;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">עמלת המרה (בדולר):</label>
+                <input type="number" id="editDepositFee" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div id="editDepositError" style="display: none; color: #ff5252; font-size: 0.85rem; margin-bottom: 10px;"></div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 20px; gap: 10px;">
+                <button onclick="deleteDepositFromModal()" class="btn btn-secondary" style="border-color: #ff5252; color: #ff5252;">🗑️ מחק</button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="editDepositSubmitBtn" onclick="submitEditDeposit()" class="btn btn-primary" style="background: #4d94ff; color: white; border: none;">שמור שינויים</button>
+                    <button onclick="closeEditDepositModal()" class="btn btn-secondary">ביטול</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Manual Close Trade Modal -->
     <div id="closeTradeModal" style="display: none; position: fixed; z-index: 1100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
+
         <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
             <span onclick="closeCloseTradeModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
             <h2 style="margin-top: 0; color: #ff5252;">Close Position: <span id="closeTradeTicker"></span></h2>

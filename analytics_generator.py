@@ -270,8 +270,57 @@ def simulate_strategy_growth(trades, initial_capital=10000.0, max_slots=3, commi
     }
 
 
+def calculate_simulation_cumulative_return(simulation):
+    """
+    Builds a day-by-day (per-exit-date) cumulative return series (%) for the
+    strategy simulation, so it can be plotted on the same chart as the MWR
+    and SPY benchmark lines.
+
+    Uses the `trades_log` produced by simulate_strategy_growth(), which
+    already contains each simulated trade's position_size and pnl_usd at
+    the time it exited. We reconstruct running equity by adding each
+    trade's pnl_usd (in chronological exit order) to the initial capital,
+    then express it as cumulative % return relative to initial_capital.
+
+    Args:
+        simulation: The dict returned by simulate_strategy_growth()
+
+    Returns:
+        List of dictionaries: [{'date': 'YYYY-MM-DD', 'sim_return': float}, ...]
+    """
+    trades_log = simulation.get('trades_log', [])
+    initial_capital = simulation.get('initial_capital', 10000.0)
+
+    if not trades_log or not initial_capital:
+        return []
+
+    # Sort by exit date to build a proper running total over time
+    sorted_log = sorted(trades_log, key=lambda t: t.get('exit_date', ''))
+
+    from collections import defaultdict
+    pnl_by_date = defaultdict(float)
+    for entry in sorted_log:
+        exit_date = (entry.get('exit_date') or '').split()[0]
+        if not exit_date:
+            continue
+        pnl_by_date[exit_date] += entry.get('pnl_usd', 0)
+
+    cumulative_usd = 0.0
+    results = []
+    for date in sorted(pnl_by_date.keys()):
+        cumulative_usd += pnl_by_date[date]
+        sim_return_pct = (cumulative_usd / initial_capital) * 100
+        results.append({
+            'date': date,
+            'sim_return': round(sim_return_pct, 2)
+        })
+
+    return results
+
+
 def calculate_mwr_cumulative_return(trades, total_deposits):
     """
+
     Calculates Money-Weighted Return (MWR) cumulative return.
     Takes into account the actual capital invested in each trade.
     Groups trades by exit date to show one point per day.
@@ -460,6 +509,11 @@ def prepare_analytics_data(trades, total_deposits):
     # Strategy simulation: "what if $10,000 had followed every signal from day one"
     simulation = simulate_strategy_growth(trades, initial_capital=10000.0, max_slots=3)
     
+    # Day-by-day cumulative return series for the simulation, so it can be
+    # plotted on the same chart as MWR and SPY
+    simulation_returns = calculate_simulation_cumulative_return(simulation)
+    
+
     # Get date range for SPY benchmark - use the SIMULATION's own date range
     # (not MWR's) so alpha compares like-for-like periods. The simulation
     # starts from the very first trade ever taken (including LULU), which
@@ -486,7 +540,9 @@ def prepare_analytics_data(trades, total_deposits):
         'mwr_returns': mwr_returns,
         'spy_returns': spy_returns,
         'simulation': simulation,
+        'simulation_returns': simulation_returns,
         'metrics': metrics,
         'alpha': round(alpha, 2),
         'trades': trades
     }
+

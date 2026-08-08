@@ -213,6 +213,7 @@
         function renderMainChart() {
             const mwr = filteredData.mwr_returns;
             const spy = filteredData.spy_returns;
+            const sim = filteredData.simulation_returns || [];
             
             const traces = [];
             
@@ -230,6 +231,20 @@
                 });
             }
             
+            // Strategy Simulation trace ($10K -> ? following every signal)
+            if (sim.length > 0) {
+                traces.push({
+                    x: sim.map(d => d.date),
+                    y: sim.map(d => d.sim_return),
+                    name: 'Strategy Simulation ($10K)',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#2196F3', width: 3 },
+                    marker: { size: 6 },
+                    hovertemplate: '<b>Strategy Simulation</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
+                });
+            }
+            
             // SPY trace
             if (spy.length > 0) {
                 traces.push({
@@ -243,6 +258,7 @@
                 });
             }
             
+
             const layout = {
                 template: 'plotly_dark',
                 paper_bgcolor: 'rgba(0,0,0,0)',

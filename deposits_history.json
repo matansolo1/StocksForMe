@@ -32,6 +32,8 @@
         "total_deposits_usd_net": 18186.0,
         "conversion_count": 0,
         "avg_conversion_fee": 3,
-        "last_updated": "2026-08-08 17:10:25"
+        "last_updated": "2026-08-08 22:47:02",
+        "default_fx_rate": 3.0444,
+        "default_deposit_fee_usd": 3.0
     }
 }
