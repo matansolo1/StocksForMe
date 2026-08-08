@@ -65,20 +65,35 @@
     
     <div class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-label">Simple Return</div>
-            <div id="metric-simple" class="metric-value">--</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-label">MWR Return</div>
+            <div class="metric-label">MWR Return (Actual $)</div>
             <div id="metric-mwr" class="metric-value">--</div>
         </div>
+        <div class="metric-card" title="Simulates a single $10,000 account following every strategy signal since day one, splitting available cash evenly across 3 slots">
+            <div class="metric-label">Strategy Simulation ($10K → ?)</div>
+            <div id="metric-simulation" class="metric-value">--</div>
+        </div>
         <div class="metric-card">
-            <div class="metric-label">SPY Return</div>
+            <div class="metric-label">SPY Return (Sim Period)</div>
             <div id="metric-spy" class="metric-value" style="color: var(--gold);">--</div>
         </div>
         <div class="metric-card">
-            <div class="metric-label">Alpha</div>
+            <div class="metric-label">Alpha (Sim vs SPY)</div>
             <div id="metric-alpha" class="metric-value">--</div>
+        </div>
+    </div>
+
+    <div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="metric-card">
+            <div class="metric-label">Simulated Final Equity</div>
+            <div id="metric-sim-equity" class="metric-value" style="color: var(--blue);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Signals Taken</div>
+            <div id="metric-sim-taken" class="metric-value" style="color: var(--neon-green);">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-label">Signals Skipped (No Free Slot)</div>
+            <div id="metric-sim-skipped" class="metric-value" style="color: var(--accent);">--</div>
         </div>
     </div>
     
@@ -166,24 +181,28 @@
             document.getElementById('metric-pf').innerText = metrics.profit_factor.toFixed(2);
             
             // Update return metrics
-            const simpleReturn = filteredData.simple_returns.length > 0 ? 
-                filteredData.simple_returns[filteredData.simple_returns.length - 1].cumulative_return : 0;
             const mwrReturn = filteredData.mwr_returns.length > 0 ? 
                 filteredData.mwr_returns[filteredData.mwr_returns.length - 1].mwr_return : 0;
             const spyReturn = filteredData.spy_returns.length > 0 ? 
                 filteredData.spy_returns[filteredData.spy_returns.length - 1].spy_return : 0;
             const alpha = filteredData.alpha;
-            
-            document.getElementById('metric-simple').innerText = (simpleReturn >= 0 ? '+' : '') + simpleReturn.toFixed(2) + '%';
-            document.getElementById('metric-simple').style.color = simpleReturn >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            const sim = filteredData.simulation || {};
             
             document.getElementById('metric-mwr').innerText = (mwrReturn >= 0 ? '+' : '') + mwrReturn.toFixed(2) + '%';
             document.getElementById('metric-mwr').style.color = mwrReturn >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            
+            const simReturn = sim.total_return_pct || 0;
+            document.getElementById('metric-simulation').innerText = (simReturn >= 0 ? '+' : '') + simReturn.toFixed(2) + '%';
+            document.getElementById('metric-simulation').style.color = simReturn >= 0 ? 'var(--neon-green)' : 'var(--accent)';
             
             document.getElementById('metric-spy').innerText = (spyReturn >= 0 ? '+' : '') + spyReturn.toFixed(2) + '%';
             
             document.getElementById('metric-alpha').innerText = (alpha >= 0 ? '+' : '') + alpha.toFixed(2) + '%';
             document.getElementById('metric-alpha').style.color = alpha >= 0 ? 'var(--neon-green)' : 'var(--accent)';
+            
+            document.getElementById('metric-sim-equity').innerText = '$' + (sim.final_equity || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('metric-sim-taken').innerText = sim.signals_taken || 0;
+            document.getElementById('metric-sim-skipped').innerText = sim.signals_skipped || 0;
             
             // Render charts
             renderMainChart();
@@ -192,32 +211,17 @@
         }
         
         function renderMainChart() {
-            const simple = filteredData.simple_returns;
             const mwr = filteredData.mwr_returns;
             const spy = filteredData.spy_returns;
             
             const traces = [];
-            
-            // Simple Return trace
-            if (simple.length > 0) {
-                traces.push({
-                    x: simple.map(d => d.date),
-                    y: simple.map(d => d.cumulative_return),
-                    name: 'Simple Return',
-                    type: 'scatter',
-                    mode: 'lines+markers',
-                    line: { color: '#2196F3', width: 3 },
-                    marker: { size: 6 },
-                    hovertemplate: '<b>Simple Return</b><br>Date: %{x}<br>Return: %{y:.2f}%<extra></extra>'
-                });
-            }
             
             // MWR trace
             if (mwr.length > 0) {
                 traces.push({
                     x: mwr.map(d => d.date),
                     y: mwr.map(d => d.mwr_return),
-                    name: 'MWR Return',
+                    name: 'MWR Return (Actual $)',
                     type: 'scatter',
                     mode: 'lines+markers',
                     line: { color: '#39FF14', width: 3 },
@@ -231,7 +235,7 @@
                 traces.push({
                     x: spy.map(d => d.date),
                     y: spy.map(d => d.spy_return),
-                    name: 'SPY Benchmark',
+                    name: 'SPY Benchmark (Sim Period)',
                     type: 'scatter',
                     mode: 'lines',
                     line: { color: '#FFD700', width: 2, dash: 'dash' },

@@ -104,45 +104,170 @@ def calculate_position_size(portfolio_state, max_positions=3, active_positions=0
     return round(position_size, 2)
 
 
-
-
-def calculate_simple_cumulative_return(trades):
+def _dedupe_signals(trades):
     """
-    Calculates simple cumulative return by summing P&L percentages.
-    Each trade is treated equally regardless of position size.
-    Groups trades by exit date to show one point per day.
-    
+    Collapses duplicate trades that represent the SAME underlying strategy
+    signal but were recorded once per owner (e.g. both 'matan' and 'horim'
+    bought the same ticker because they each run their own independent slot
+    allocation). For the purposes of simulating "what would a single $X
+    account have done if it followed every signal the strategy produced",
+    these must be counted ONCE.
+
+    Two trades are considered the same signal if they share the same
+    ticker, entry_price and exit_price (both rounded to cents). This is
+    deliberately timestamp-independent: each owner's automation executes at
+    a slightly different moment (sometimes minutes apart), but an identical
+    entry+exit price pair on the same ticker is conclusive proof it's the
+    same underlying scanner signal, not two separate trading decisions.
+
     Args:
-        trades: List of trade dictionaries
-    
+        trades: List of trade dictionaries (all owners combined)
+
     Returns:
-        List of dictionaries with date and cumulative return
+        List of deduplicated trade dictionaries, sorted by entry timestamp.
     """
-    # Filter and sort closed trades by exit timestamp (not entry!)
-    closed_trades = [t for t in trades if t.get('status') != 'ACTIVE' and t.get('exit_timestamp')]
-    closed_trades.sort(key=lambda x: x.get('exit_timestamp', ''))
-    
-    # Group trades by exit date
-    from collections import defaultdict
-    trades_by_date = defaultdict(list)
-    for trade in closed_trades:
-        exit_date = trade.get('exit_timestamp', '').split()[0]
-        trades_by_date[exit_date].append(trade)
-    
-    cumulative = 0
-    results = []
-    
-    # Process each date
-    for date in sorted(trades_by_date.keys()):
-        daily_pnl = sum(t.get('pnl_pct', 0) for t in trades_by_date[date])
-        cumulative += daily_pnl
-        results.append({
-            'date': date,
-            'cumulative_return': round(cumulative, 2),
-            'trades_count': len(trades_by_date[date])
+    seen = {}
+    for t in trades:
+        key = (
+            t.get('ticker'),
+            round(t.get('entry_price', 0), 2),
+            round(t.get('exit_price', 0) or 0, 2)
+        )
+        if key not in seen:
+            seen[key] = t
+    deduped = list(seen.values())
+    deduped.sort(key=lambda t: t.get('timestamp', ''))
+    return deduped
+
+
+def simulate_strategy_growth(trades, initial_capital=10000.0, max_slots=3, commission_per_trade=2.5):
+    """
+    Simulates "what if a single account of `initial_capital` had followed
+    every signal this strategy produced from day one, using the exact
+    slot-allocation rule: whenever a slot frees up, the position size for
+    the NEXT trade taken is (current cash) / (number of currently free
+    slots) - i.e. an even split of available cash across empty slots at
+    the moment of entry.
+
+    This deliberately ignores everything about what ACTUALLY happened with
+    real money (multiple owners, staggered deposits, uneven real position
+    sizing) and instead answers: "if I had started with $X and mechanically
+    followed the strategy's signals with disciplined position sizing, what
+    would I have today?"
+
+    Rules (confirmed with user):
+      - Only CLOSED trades are simulated (ACTIVE/REVIEW positions are
+        skipped entirely - they never open a slot in the simulation).
+      - Duplicate signals (same ticker/entry_price/exit_price recorded once
+        per owner) are collapsed into a single trade via _dedupe_signals().
+      - A trade only "opens" if a slot is free at its entry time (slots
+        free up strictly when an earlier trade's exit_timestamp has passed).
+      - Position size at entry = cash_available / free_slots_at_that_moment.
+      - Commission (entry+exit) is deducted in dollar terms, scaled to the
+        simulated position size (not the real historical position size).
+      - If, at a given entry moment, there are more signals than free
+        slots, only the first `free_slots` (in chronological order) are
+        taken; the rest are recorded as "skipped".
+
+    Args:
+        trades: List of trade dictionaries (all owners combined)
+        initial_capital: Starting capital for the simulation (default $10,000
+                          to keep commission drag proportionally realistic)
+        max_slots: Number of concurrent position slots (default 3)
+        commission_per_trade: Commission in USD per entry/exit leg
+
+    Returns:
+        Dictionary:
+            {
+                'final_equity': float,
+                'total_return_pct': float,
+                'initial_capital': float,
+                'signals_taken': int,
+                'signals_skipped': int,
+                'start_date': str,
+                'end_date': str,
+                'trades_log': [ {ticker, entry_date, exit_date, position_size,
+                                  pnl_pct, pnl_usd, commission_usd}, ... ]
+            }
+    """
+    closed_trades = [t for t in trades if t.get('status') not in ['ACTIVE', 'REVIEW'] and t.get('exit_timestamp')]
+    signals = _dedupe_signals(closed_trades)
+
+    cash = float(initial_capital)
+    # open_positions: list of dicts with exit_timestamp (str) and invested (float)
+    open_positions = []
+    trades_log = []
+    signals_skipped = 0
+
+    for signal in signals:
+        entry_ts = signal.get('timestamp', '')
+        exit_ts = signal.get('exit_timestamp', '')
+
+        # Free up any slots whose exit time is at or before this entry time
+        still_open = []
+        for pos in open_positions:
+            if pos['exit_timestamp'] <= entry_ts:
+                # Settle this position: return invested capital + P&L - exit commission
+                proceeds = pos['invested'] * (1 + pos['pnl_pct'] / 100)
+                cash += proceeds - commission_per_trade  # exit commission leg
+            else:
+                still_open.append(pos)
+        open_positions = still_open
+
+        free_slots = max_slots - len(open_positions)
+
+        if free_slots <= 0:
+            signals_skipped += 1
+            continue
+
+        position_size = cash / free_slots
+
+        # Entry commission leg
+        cash -= position_size
+        cash -= commission_per_trade
+
+        open_positions.append({
+            'exit_timestamp': exit_ts,
+            'invested': position_size,
+            'pnl_pct': signal.get('pnl_pct', 0)
         })
-    
-    return results
+
+        trades_log.append({
+            'ticker': signal.get('ticker'),
+            'entry_date': entry_ts,
+            'exit_date': exit_ts,
+            'position_size': round(position_size, 2),
+            'pnl_pct': round(signal.get('pnl_pct', 0), 2)
+        })
+
+    # Settle any positions still open at the end of history (all real
+    # data given to this function is closed trades, so this normally
+    # closes everything that was ever opened).
+    for pos in open_positions:
+        proceeds = pos['invested'] * (1 + pos['pnl_pct'] / 100)
+        cash += proceeds - commission_per_trade
+
+    final_equity = cash
+    total_return_pct = ((final_equity - initial_capital) / initial_capital) * 100 if initial_capital else 0
+
+    # Backfill pnl_usd/commission_usd into the log for transparency
+    for entry in trades_log:
+        entry['pnl_usd'] = round(entry['position_size'] * (entry['pnl_pct'] / 100), 2)
+        entry['commission_usd'] = round(commission_per_trade * 2, 2)
+
+    start_date = signals[0]['timestamp'].split()[0] if signals else None
+    end_date = signals[-1]['exit_timestamp'].split()[0] if signals else None
+
+    return {
+        'final_equity': round(final_equity, 2),
+        'total_return_pct': round(total_return_pct, 2),
+        'initial_capital': initial_capital,
+        'signals_taken': len(trades_log),
+        'signals_skipped': signals_skipped,
+        'start_date': start_date,
+        'end_date': end_date,
+        'trades_log': trades_log
+    }
 
 
 def calculate_mwr_cumulative_return(trades, total_deposits):
@@ -330,33 +455,37 @@ def prepare_analytics_data(trades, total_deposits):
     portfolio_state = calculate_portfolio_state(trades, total_deposits)
     
     # Calculate returns
-    simple_returns = calculate_simple_cumulative_return(trades)
     mwr_returns = calculate_mwr_cumulative_return(trades, total_deposits)
     
-    # Get date range for SPY benchmark
-    if simple_returns:
-        start_date = simple_returns[0]['date']
-        end_date = simple_returns[-1]['date']
-        spy_returns = get_spy_benchmark(start_date, end_date)
+    # Strategy simulation: "what if $10,000 had followed every signal from day one"
+    simulation = simulate_strategy_growth(trades, initial_capital=10000.0, max_slots=3)
+    
+    # Get date range for SPY benchmark - use the SIMULATION's own date range
+    # (not MWR's) so alpha compares like-for-like periods. The simulation
+    # starts from the very first trade ever taken (including LULU), which
+    # can predate the first real deposit.
+    if simulation.get('start_date') and simulation.get('end_date'):
+        spy_returns = get_spy_benchmark(simulation['start_date'], simulation['end_date'])
     else:
         spy_returns = []
     
     # Calculate performance metrics
     metrics = calculate_performance_metrics(trades)
     
-    # Calculate alpha (strategy return - SPY return)
-    if simple_returns and spy_returns:
-        strategy_return = simple_returns[-1]['cumulative_return']
-        spy_final_return = spy_returns[-1]['spy_return'] if spy_returns else 0
-        alpha = strategy_return - spy_final_return
+    # Calculate alpha (strategy simulation return - SPY return) - apples to
+    # apples, since both are independent of real deposit timing/sizing and
+    # cover the exact same date range.
+    if spy_returns:
+        spy_final_return = spy_returns[-1]['spy_return']
+        alpha = simulation['total_return_pct'] - spy_final_return
     else:
         alpha = 0
     
     return {
         'portfolio_state': portfolio_state,
-        'simple_returns': simple_returns,
         'mwr_returns': mwr_returns,
         'spy_returns': spy_returns,
+        'simulation': simulation,
         'metrics': metrics,
         'alpha': round(alpha, 2),
         'trades': trades
