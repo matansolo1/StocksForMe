@@ -103,6 +103,23 @@ def run_scan():
     today_str = datetime.now().strftime('%Y-%m-%d')
     return render_template_string(DEPOSIT_FORM_HTML, default_deposit_fee=default_fee, today=today_str)
 
+def _sync_deposits_metadata():
+    """
+    Mirrors the aggregate deposit totals from deposits_history.json into the
+    trades DB's portfolio_metadata, so portfolio calculations (cash available,
+    next position size, etc.) always reflect the latest deposits.
+    Shared by execute_scan() and api_create_deposit() to keep them in sync (DRY).
+    """
+    import currency_manager
+    history = currency_manager.load_deposits_history()
+    meta = history.get('metadata', {})
+    data_manager.update_metadata(
+        total_deposits=meta.get('total_deposits_usd_net', 0.0),
+        total_deposits_gross=meta.get('total_deposits_usd_gross', 0.0),
+        total_conversion_fees=meta.get('total_conversion_fees_usd', 0.0)
+    )
+
+
 @app.route('/execute-scan', methods=['POST'])
 def execute_scan():
     deposit_amount = float(request.form.get('deposit', 0))
@@ -131,17 +148,10 @@ def execute_scan():
             conversion_fee=conversion_fee,
             description=f"Weekly scan deposit - {deposit_date}"
         )
-        deposits_history = currency_manager.load_deposits_history()
-        total_net_usd = deposits_history['metadata']['total_deposits_usd_net']
-        total_gross_usd = deposits_history['metadata']['total_deposits_usd_gross']
-        total_conversion_fees = deposits_history['metadata']['total_conversion_fees_usd']
-        data_manager.update_metadata(
-            total_deposits=total_net_usd,
-            total_deposits_gross=total_gross_usd,
-            total_conversion_fees=total_conversion_fees
-        )
+        _sync_deposits_metadata()
     
     # Instead of running scanner.py as a subprocess and blocking, we render a scanning page
+
     # that connects to the SSE stream.
     return render_template_string(
         SCANNING_HTML,
@@ -503,6 +513,76 @@ def api_get_deposits():
         "default_fx_rate": default_rate,
         "default_deposit_fee_usd": default_fee
     })
+
+
+@app.route('/api/deposits', methods=['POST'])
+def api_create_deposit():
+    """
+    Creates a new manual deposit. Expects JSON:
+      { amount, currency ("ILS"/"USD"), date ("YYYY-MM-DD"),
+        fx_rate (optional), conversion_fee (optional) }
+    Description is auto-generated as "Manual deposit - <date>".
+    Uses the same currency_manager.add_deposit() + _sync_deposits_metadata()
+    path as the weekly-scan deposit flow, so the stored format is identical,
+    then regenerates the dashboard so Cash Available / Next Position update.
+    """
+    import currency_manager
+
+    data = request.get_json() or {}
+
+    amount_raw = data.get('amount')
+    currency = (data.get('currency') or '').upper()
+    date_str = data.get('date') or datetime.now().strftime('%Y-%m-%d')
+    fx_rate_raw = data.get('fx_rate')
+    conversion_fee_raw = data.get('conversion_fee')
+
+    try:
+        amount = float(amount_raw)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "\u05e1\u05db\u05d5\u05dd \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+    if amount <= 0:
+        return jsonify({"success": False, "message": "\u05d4\u05e1\u05db\u05d5\u05dd \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d2\u05d3\u05d5\u05dc \u05de-0."}), 400
+
+    if currency not in ("ILS", "USD"):
+        return jsonify({"success": False, "message": "\u05de\u05d8\u05d1\u05e2 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "\u05e4\u05d5\u05e8\u05de\u05d8 \u05ea\u05d0\u05e8\u05d9\u05da \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df (YYYY-MM-DD)."}), 400
+
+    fx_rate = None
+    if fx_rate_raw not in (None, ''):
+        try:
+            fx_rate = float(fx_rate_raw)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "\u05e9\u05e2\u05e8 \u05d4\u05de\u05e8\u05d4 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+
+    conversion_fee = None
+    if currency == 'ILS' and conversion_fee_raw not in (None, ''):
+        try:
+            conversion_fee = float(conversion_fee_raw)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "\u05e2\u05de\u05dc\u05ea \u05d4\u05de\u05e8\u05d4 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05e0\u05d4."}), 400
+
+    deposit = currency_manager.add_deposit(
+        amount=amount,
+        currency=currency,
+        date=date_str,
+        fx_rate=fx_rate,
+        conversion_fee=conversion_fee,
+        description=f"Manual deposit - {date_str}"
+    )
+
+    _sync_deposits_metadata()
+
+    try:
+        trades = data_manager.load_trades()
+        ui_generator.generate_dashboard_file(trades)
+    except Exception as e:
+        print(f"Warning: could not regenerate dashboard after manual deposit: {e}")
+
+    return jsonify({"success": True, "message": "\u05d4\u05d4\u05e4\u05e7\u05d3\u05d4 \u05e0\u05d5\u05e1\u05e4\u05d4 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4.", "deposit": deposit})
 
 
 @app.route('/api/deposits/<int:deposit_id>', methods=['POST'])

@@ -18,6 +18,7 @@ __pycache__/
 # Live Data / Database Files
 trades_db.json
 trades_db.json.bak
+deposits_history.json
 
 # Local/Temporary HTML Dashboards (generated dynamically)
 tracker_dashboard.html
@@ -40,4 +41,3 @@ archive/
 # Pre-restore safety backups (created automatically before data restore)
 backups/
 *.pre_restore_*.json
-

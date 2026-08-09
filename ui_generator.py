@@ -152,7 +152,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="metric-label">CASH AVAILABLE</div>
             <div class="metric-value" style="color: {{cash_color}};">${{cash_available}}</div>
             <div style="color: var(--text-dim); font-size: 0.85rem;">
-                Invested: ${{invested_capital}} | Next Position: ${{next_position_size}}
+                Invested: ${{invested_capital}} | {{next_position_label}}
+
             </div>
         </div>
     </div>
@@ -205,7 +206,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="table-section">
             <h3>Active Positions</h3>
             <table>
-                <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>P&L</th><th>Action</th></tr></thead>
+                <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>Value</th><th>P&L</th><th>Action</th></tr></thead>
                 <tbody>{{active_rows}}</tbody>
             </table>
         </div>
@@ -1285,6 +1286,122 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 alert('❌ שגיאת רשת: ' + e);
             }
         };
+
+        // Add Manual Deposit Logic
+        window.openAddDepositModal = async function() {
+            document.getElementById('addDepositDate').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('addDepositAmount').value = '';
+            document.getElementById('addDepositFxRate').value = '';
+            document.getElementById('addDepositError').style.display = 'none';
+            document.querySelector('input[name="addDepositCurrency"][value="ILS"]').checked = true;
+
+            let defaultFee = 0;
+            try {
+                const response = await fetch('/api/deposits');
+                const data = await response.json();
+                defaultFee = (data.default_deposit_fee_usd != null) ? data.default_deposit_fee_usd : 0;
+            } catch (e) {
+                defaultFee = 0;
+            }
+            document.getElementById('addDepositFee').value = defaultFee;
+
+            toggleAddDepositCurrencyFields();
+            document.getElementById('addDepositModal').style.display = 'flex';
+        };
+
+        window.closeAddDepositModal = function() {
+            document.getElementById('addDepositModal').style.display = 'none';
+        };
+
+        window.toggleAddDepositCurrencyFields = function() {
+            const isIls = document.querySelector('input[name="addDepositCurrency"]:checked').value === 'ILS';
+            document.getElementById('addDepositAmountLabel').innerText = isIls ? '\u05e1\u05db\u05d5\u05dd (\u20aa):' : '\u05e1\u05db\u05d5\u05dd ($):';
+            document.getElementById('addDepositFeeRow').style.display = isIls ? 'block' : 'none';
+            document.getElementById('addDepositFxRate').parentElement.style.display = isIls ? 'block' : 'none';
+            updateAddDepositPreview();
+        };
+
+        window.updateAddDepositPreview = function() {
+            const previewEl = document.getElementById('addDepositPreview');
+            const isIls = document.querySelector('input[name="addDepositCurrency"]:checked').value === 'ILS';
+            const amount = parseFloat(document.getElementById('addDepositAmount').value);
+            const fxRateRaw = document.getElementById('addDepositFxRate').value;
+            const fxRate = fxRateRaw ? parseFloat(fxRateRaw) : null;
+            const fee = parseFloat(document.getElementById('addDepositFee').value) || 0;
+
+            if (isNaN(amount) || amount <= 0) {
+                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: --';
+                return;
+            }
+            if (!isIls) {
+                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: ~$' + amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                return;
+            }
+            if (!fxRate || fxRate <= 0) {
+                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: \u05d9\u05d7\u05d5\u05e9\u05d1 \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05dc\u05e4\u05d9 \u05d4\u05ea\u05d0\u05e8\u05d9\u05da';
+                return;
+            }
+            const net = (amount / fxRate) - fee;
+            previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: ~$' + net.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        };
+
+        window.submitAddDeposit = async function() {
+            const date = document.getElementById('addDepositDate').value;
+            const currency = document.querySelector('input[name="addDepositCurrency"]:checked').value;
+            const amount = parseFloat(document.getElementById('addDepositAmount').value);
+            const fxRateRaw = document.getElementById('addDepositFxRate').value;
+            const feeRaw = document.getElementById('addDepositFee').value;
+            const errorBox = document.getElementById('addDepositError');
+            errorBox.style.display = 'none';
+
+            if (!date) {
+                errorBox.innerText = '\u05d9\u05e9 \u05dc\u05d1\u05d7\u05d5\u05e8 \u05ea\u05d0\u05e8\u05d9\u05da.';
+                errorBox.style.display = 'block';
+                return;
+            }
+            if (isNaN(amount) || amount <= 0) {
+                errorBox.innerText = '\u05d9\u05e9 \u05dc\u05d4\u05d6\u05d9\u05df \u05e1\u05db\u05d5\u05dd \u05ea\u05e7\u05d9\u05df (\u05d2\u05d3\u05d5\u05dc \u05de-0).';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            const payload = { date: date, currency: currency, amount: amount };
+            if (currency === 'ILS' && fxRateRaw !== '') {
+                payload.fx_rate = parseFloat(fxRateRaw);
+            }
+            if (currency === 'ILS' && feeRaw !== '') {
+                payload.conversion_fee = parseFloat(feeRaw);
+            }
+
+            const btn = document.getElementById('addDepositSubmitBtn');
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+
+            try {
+                const response = await fetch('/api/deposits', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    closeAddDepositModal();
+                    closeFxManagementModal();
+                    showDataManagementStatus('\u2705 ' + data.message, false);
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    errorBox.innerText = data.message || 'Error';
+                    errorBox.style.display = 'block';
+                }
+            } catch (e) {
+                errorBox.innerText = 'Network error: ' + e;
+                errorBox.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        };
     </script>
 
 
@@ -1362,7 +1479,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="fxManagementModal" style="display: none; position: fixed; z-index: 1150; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
         <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 950px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
             <span onclick="closeFxManagementModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
-            <h2 style="margin-top: 0; color: #4d94ff;">✏️ ניהול הפקדות ושערי המרה</h2>
+            <h2 style="margin-top: 0; color: #4d94ff; display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+                <span>✏️ ניהול הפקדות ושערי המרה</span>
+                <button onclick="openAddDepositModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; font-size: 0.85rem; padding: 8px 14px;">➕ הוסף הפקדה ידנית</button>
+            </h2>
 
             <!-- Default FX Rate + Default Deposit Fee Section -->
             <div style="background: #1c1c1c; padding: 18px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px;">
@@ -1446,6 +1566,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <button id="editDepositSubmitBtn" onclick="submitEditDeposit()" class="btn btn-primary" style="background: #4d94ff; color: white; border: none;">שמור שינויים</button>
                     <button onclick="closeEditDepositModal()" class="btn btn-secondary">ביטול</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Manual Deposit Modal -->
+    <div id="addDepositModal" style="display: none; position: fixed; z-index: 1250; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center;">
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 460px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
+            <span onclick="closeAddDepositModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #39FF14;">➕ הפקדה חדשה</h2>
+            <p style="color: #a0a0a0; font-size: 0.85rem;">הוספת הפקדה ללא הרצת סריקה שבועית. הכסף יתווסף מיידית ל-Cash Available.</p>
+
+            <div style="margin-bottom: 15px; margin-top: 20px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">תאריך:</label>
+                <input type="date" id="addDepositDate" onchange="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סוג הפקדה:</label>
+                <div style="display: flex; gap: 15px;">
+                    <label style="display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 0.9rem; cursor: pointer;">
+                        <input type="radio" name="addDepositCurrency" value="ILS" checked onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> שקלים (₪)
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 0.9rem; cursor: pointer;">
+                        <input type="radio" name="addDepositCurrency" value="USD" onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> דולר ($)
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label id="addDepositAmountLabel" style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סכום (₪):</label>
+                <input type="number" id="addDepositAmount" step="0.01" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">שער המרה (ריק = שליפה אוטומטית לפי התאריך):</label>
+                <input type="number" id="addDepositFxRate" step="0.0001" placeholder="אוטומטי" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div id="addDepositFeeRow" style="margin-bottom: 15px;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">עמלת המרה (בדולר):</label>
+                <input type="number" id="addDepositFee" step="0.01" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+            </div>
+
+            <div id="addDepositPreview" style="background: #1c1c1c; border: 1px solid #333; border-radius: 8px; padding: 12px; color: #39FF14; font-weight: 600; font-size: 0.9rem; margin-bottom: 15px;">נטו לתיק: --</div>
+
+            <div id="addDepositError" style="display: none; color: #ff5252; font-size: 0.85rem; margin-bottom: 10px;"></div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px;">
+                <button id="addDepositSubmitBtn" onclick="submitAddDeposit()" class="btn btn-primary" style="background: #39FF14; color: #0a0a0a; border: none; font-weight: bold;">הוסף הפקדה</button>
+                <button onclick="closeAddDepositModal()" class="btn btn-secondary">ביטול</button>
             </div>
         </div>
     </div>
@@ -1543,11 +1713,27 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     unrealized_pnl = portfolio_state['unrealized_pnl']
     total_commissions = portfolio_state.get('total_commissions', 0)
     
-    # Calculate next position size
-    next_position_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3)
+    # Calculate next position size based on the ACTUAL number of empty slots
+    # (active_positions must be passed in, otherwise this always divides by
+    # the full max_positions=3 regardless of how many slots are actually free)
+    MAX_POSITIONS = 3
+    active_position_count = len(active_trades)
+    slots_free = max(0, MAX_POSITIONS - active_position_count)
+    next_position_size = analytics_generator.calculate_position_size(
+        portfolio_state, max_positions=MAX_POSITIONS, active_positions=active_position_count
+    )
+
+    if slots_free <= 0:
+        next_position_label = "Next Position: N/A (portfolio full)"
+    elif cash_available <= 0:
+        next_position_label = "Next Position: $0.00 (no cash available)"
+    else:
+        slot_word = "slot" if slots_free == 1 else "slots"
+        next_position_label = f"Next Position: ${next_position_size:,.2f} ({slots_free} {slot_word} free)"
     
     # Calculate portfolio return
     portfolio_mwr = finance_utils.calculate_mwr(total_deposits, current_equity)
+
 
     # Table rows
     active_rows = ""
@@ -1555,6 +1741,16 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
         pnl = t.get("pnl_pct", 0)
         color = "#39FF14" if pnl >= 0 else "#ff5252"
         led = "led-green" if t["status"] == "ACTIVE" else "led-orange"
+        # Position value in USD: current market value vs. the original entry cost.
+        # quantity is stored on the trade; fall back to deriving it from the
+        # batch position size if an older record is missing it.
+        quantity = t.get('quantity')
+        if not quantity:
+            entry_price = t.get('entry_price') or 0
+            quantity = (t.get('batch_position_size', 0) / entry_price) if entry_price else 0
+        cost_basis = quantity * t.get('entry_price', 0)
+        market_value = quantity * t.get('current_price', 0)
+        value_color = "#39FF14" if market_value >= cost_basis else "#ff5252"
         active_rows += f"""<tr class="stock-row" onclick="displayTickerData('{t['ticker']}')">
             <td><div class="led-dot {led}"></div></td>
             <td><strong>{t['ticker']}</strong></td>
@@ -1562,6 +1758,10 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
             <td>{t.get('weight_pct', 33.33)}%</td>
             <td>${t['entry_price']:.2f}</td>
             <td>${t.get('current_price', 0):.2f}</td>
+            <td>
+                <div style="color: {value_color}; font-weight: bold;">${market_value:,.2f}</div>
+                <div style="color: var(--text-dim); font-size: 0.75rem;">(cost ${cost_basis:,.2f})</div>
+            </td>
             <td style="color: {color}; font-weight: bold;">{pnl:+.2f}%</td>
             <td><button onclick="event.stopPropagation(); openCloseTradeModal('{t['ticker']}', {t.get('current_price', 0)})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #ff5252; color: #ff5252;">Close</button></td>
         </tr>"""
@@ -1624,41 +1824,48 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
         ils_rate_change_pct = "0.00"
         ils_rate_change_sign = ""
     
-    html = HTML_TEMPLATE.replace("{{equity_color}}", equity_color)\
-                       .replace("{{current_equity}}", f"{current_equity:,.2f}")\
-                       .replace("{{total_deposits}}", f"{total_deposits:,.2f}")\
-                       .replace("{{portfolio_pnl}}", f"{portfolio_mwr:+.2f}%")\
-                       .replace("{{cash_color}}", cash_color)\
-                       .replace("{{cash_available}}", f"{cash_available:,.2f}")\
-                       .replace("{{invested_capital}}", f"{invested_capital:,.2f}")\
-                       .replace("{{ils_pnl_color}}", ils_pnl_color)\
-                       .replace("{{ils_pnl_sign}}", ils_pnl_sign)\
-                       .replace("{{ils_pnl_abs}}", ils_pnl_abs)\
-                       .replace("{{ils_trading_sign}}", ils_trading_sign)\
-                       .replace("{{ils_trading_abs}}", ils_trading_abs)\
-                       .replace("{{ils_fx_sign}}", ils_fx_sign)\
-                       .replace("{{ils_fx_abs}}", ils_fx_abs)\
-                       .replace("{{ils_buy_rate}}", ils_buy_rate)\
-                       .replace("{{ils_current_rate}}", ils_current_rate)\
-                       .replace("{{ils_rate_change_pct}}", ils_rate_change_pct)\
-                       .replace("{{ils_rate_change_sign}}", ils_rate_change_sign)\
-                       .replace("{{next_position_size}}", f"{next_position_size:,.2f}")\
-                       .replace("{{realized_color}}", realized_color)\
-                       .replace("{{realized_pnl_sign}}", realized_pnl_sign)\
-                       .replace("{{realized_pnl_abs}}", realized_pnl_abs)\
-                       .replace("{{unrealized_color}}", unrealized_color)\
-                       .replace("{{unrealized_pnl_sign}}", unrealized_pnl_sign)\
-                       .replace("{{unrealized_pnl_abs}}", unrealized_pnl_abs)\
-                       .replace("{{total_commissions}}", f"{total_commissions:,.2f}")\
-                       .replace("{{commission_per_trade}}", f"{commission_per_trade:.2f}")\
-                       .replace("{{total_trades_count}}", str(total_trades_count))\
-                       .replace("{{total_conversion_fees}}", f"{total_conversion_fees:,.2f}")\
-                       .replace("{{conversion_count}}", str(conversion_count))\
-                       .replace("{{avg_conversion_fee}}", f"{avg_conversion_fee:.2f}")\
-                       .replace("{{active_rows}}", active_rows if active_rows else '<tr><td colspan="8" style="text-align:center;">No active trades</td></tr>')\
-                       .replace("{{history_rows}}", history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>')\
-                       .replace("{{charts_json}}", charts_json)\
-                       .replace("{{clearance_button}}", "")
+    replacements = {
+        "{{equity_color}}": equity_color,
+        "{{current_equity}}": f"{current_equity:,.2f}",
+        "{{total_deposits}}": f"{total_deposits:,.2f}",
+        "{{portfolio_pnl}}": f"{portfolio_mwr:+.2f}%",
+        "{{cash_color}}": cash_color,
+        "{{cash_available}}": f"{cash_available:,.2f}",
+        "{{invested_capital}}": f"{invested_capital:,.2f}",
+        "{{ils_pnl_color}}": ils_pnl_color,
+        "{{ils_pnl_sign}}": ils_pnl_sign,
+        "{{ils_pnl_abs}}": ils_pnl_abs,
+        "{{ils_trading_sign}}": ils_trading_sign,
+        "{{ils_trading_abs}}": ils_trading_abs,
+        "{{ils_fx_sign}}": ils_fx_sign,
+        "{{ils_fx_abs}}": ils_fx_abs,
+        "{{ils_buy_rate}}": ils_buy_rate,
+        "{{ils_current_rate}}": ils_current_rate,
+        "{{ils_rate_change_pct}}": ils_rate_change_pct,
+        "{{ils_rate_change_sign}}": ils_rate_change_sign,
+        "{{next_position_label}}": next_position_label,
+        "{{realized_color}}": realized_color,
+        "{{realized_pnl_sign}}": realized_pnl_sign,
+        "{{realized_pnl_abs}}": realized_pnl_abs,
+        "{{unrealized_color}}": unrealized_color,
+        "{{unrealized_pnl_sign}}": unrealized_pnl_sign,
+        "{{unrealized_pnl_abs}}": unrealized_pnl_abs,
+        "{{total_commissions}}": f"{total_commissions:,.2f}",
+        "{{commission_per_trade}}": f"{commission_per_trade:.2f}",
+        "{{total_trades_count}}": str(total_trades_count),
+        "{{total_conversion_fees}}": f"{total_conversion_fees:,.2f}",
+        "{{conversion_count}}": str(conversion_count),
+        "{{avg_conversion_fee}}": f"{avg_conversion_fee:.2f}",
+        "{{active_rows}}": active_rows if active_rows else '<tr><td colspan="9" style="text-align:center;">No active trades</td></tr>',
+        "{{history_rows}}": history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>',
+        "{{charts_json}}": charts_json,
+        "{{clearance_button}}": "",
+    }
+
+    html = HTML_TEMPLATE
+    for placeholder, value in replacements.items():
+        html = html.replace(placeholder, value)
+
 
 
     # Ensure the destination directory exists (e.g. on a fresh clone where
