@@ -2,17 +2,21 @@
 Retroactive Entry Audit
 =======================
 
-Re-evaluates EXISTING trades against the real-world limit-order entry model
-that was introduced in `trading_logic.check_pending_entries()`.
+Re-evaluates EXISTING trades against the real-world GTC limit-order entry
+model introduced in `trading_logic.check_pending_entries()`.
 
 Historically, a setup found by the Sunday scan was written straight into the
 database as an ACTIVE position at Friday's closing price. In reality the buy
 limit order is only executed if the market actually trades at or below that
-price during the next session. Stocks that gapped up and never came back were
-therefore recorded as positions that were never actually bought.
+price. Stocks that gapped up and never came back were therefore recorded as
+positions that were never actually bought ("phantom positions").
 
-This script finds those phantom positions and (optionally) marks them
-NOT_FILLED.
+Because orders are GTC (Good-Til-Cancelled), a phantom position is NOT a
+cancelled order - it is an order that is STILL LIVE and may yet fill. This
+script therefore converts phantom positions back to PENDING_ENTRY, so they
+keep waiting for the price to reach the target, exactly like at the broker.
+
+To close such an order for good, use the "Cancel Order" button on the dashboard.
 
 Usage:
     python audit_entries.py            # dry run - report only, changes nothing
@@ -69,6 +73,49 @@ def audit_trade(trade):
     }
 
 
+def revert_to_pending(trade, reason):
+    """
+    Converts a phantom ACTIVE trade back into a live PENDING_ENTRY GTC order.
+
+    The original signal price becomes the limit price, the capital that was
+    wrongly reported as invested becomes reserved capital, and the trade stops
+    contributing any P&L until it actually fills.
+    """
+    target = float(trade.get("target_entry") or trade.get("entry_price"))
+    # Capital that was wrongly booked as an open position becomes the reserve
+    reserved = float(trade.get("reserved_capital") or 0) or \
+        float(trade.get("quantity", 0) or 0) * float(trade.get("entry_price", 0) or 0)
+
+    trade["status"] = trading_logic.STATUS_PENDING_ENTRY
+    trade["target_entry"] = target
+    trade["signal_price"] = trade.get("signal_price", target)
+    trade["entry_price"] = target
+    trade["reserved_capital"] = round(reserved, 2)
+    trade["time_in_force"] = "GTC"
+    trade["sessions_waiting"] = 0
+    trade.setdefault("signal_timestamp", trade.get("timestamp"))
+    trade.setdefault("stop_loss_pct", 5.0)
+    trade.setdefault("take_profit_pct", 10.0)
+
+    # No position -> no P&L and no live price of its own
+    trade["pnl_pct"] = 0.0
+    trade.pop("current_price", None)
+    trade.pop("price_note", None)
+
+    trade["entry_check_note"] = f"Retroactive audit: {reason}"
+
+    # Make sure the order is anchored to a real trading session
+    if not trade.get("entry_session_date"):
+        try:
+            signal_dt = datetime.strptime(trade["timestamp"], "%Y-%m-%d %H:%M:%S")
+            session_date, _o, _c = trading_logic.get_entry_session(signal_dt)
+            trade["entry_session_date"] = session_date
+        except Exception:
+            pass
+
+    return trade
+
+
 def main():
     apply_changes = "--apply" in sys.argv
 
@@ -104,11 +151,12 @@ def main():
             print(f"    session low  : ${low:.2f}")
         print(f"    verdict      : {outcome} - {evaluation['reason']}")
 
-        if outcome == "NOT_FILLED":
+        if outcome == "FILLED":
+            print(f"    ✅ Genuinely filled at ${evaluation['fill_price']:.2f} - keeping as ACTIVE.")
+        elif outcome == "PENDING":
             print(f"    ❌ This position was NEVER actually bought.")
+            print(f"       -> will be reverted to PENDING_ENTRY (GTC order still waiting).")
             to_expire.append((trade, evaluation["reason"]))
-        elif outcome == "FILLED":
-            print(f"    ✅ Would have been filled at ${evaluation['fill_price']:.2f} - keeping as ACTIVE.")
         else:
             print(f"    ⏳ Inconclusive ({outcome}) - keeping as ACTIVE (conservative).")
 
@@ -121,11 +169,13 @@ def main():
     for trade, _reason in to_expire:
         qty = trade.get("quantity", 0)
         entry = trade.get("entry_price", 0)
-        print(f"  - {trade['ticker']}: ${qty * entry:,.2f} of capital and 1 slot wrongly reported as invested")
+        print(f"  - {trade['ticker']}: ${qty * entry:,.2f} wrongly reported as an open position")
+    print("\nThese will be reverted to PENDING_ENTRY - the GTC order stays live and")
+    print("may still fill. To close one for good, use \"Cancel Order\" on the dashboard.")
 
     if not apply_changes:
         print("\nThis was a DRY RUN. No files were modified.")
-        print("Run `python audit_entries.py --apply` to mark these as NOT_FILLED.")
+        print("Run `python audit_entries.py --apply` to revert these to PENDING_ENTRY.")
         return
 
     # Safety net: snapshot the current DB before mutating it
@@ -134,8 +184,8 @@ def main():
         print(f"\n🛟 Backup created: {backup_path}")
 
     for trade, reason in to_expire:
-        trading_logic.expire_pending_entry(trade, note=f"Retroactive audit: {reason}")
-        print(f"  ✔ {trade['ticker']} marked NOT_FILLED")
+        revert_to_pending(trade, reason)
+        print(f"  ✔ {trade['ticker']} reverted to PENDING_ENTRY (GTC order still live)")
 
     data_manager.save_trades(trades)
     data_manager.update_portfolio_state(trades)
@@ -147,7 +197,8 @@ def main():
     except Exception as e:
         print(f"  ⚠️ Could not regenerate dashboard: {e}")
 
-    print("\nDone. Portfolio state and analytics now exclude the phantom positions.")
+    print("\nDone. These are no longer counted as open positions; they now appear")
+    print("in the \"Pending Entries\" table and will fill if the price reaches the target.")
 
 
 if __name__ == "__main__":

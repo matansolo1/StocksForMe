@@ -8,13 +8,17 @@ import pytz
 # Trade status constants & predicates (single source of truth)
 #
 # A trade produced by the weekly scan is NOT a position yet. In the real world
-# the order is placed as a LIMIT order at the signal price (last Friday close)
-# and it is only executed if the market actually trades at or below that price
-# during the next trading session. Until then the trade is PENDING_ENTRY, and
-# if the session ends without the limit being touched it becomes NOT_FILLED.
+# the order is placed as a GTC (Good-Til-Cancelled) LIMIT order at the signal
+# price (last Friday's close), and it is only executed if the market actually
+# trades at or below that price. Until then the trade is PENDING_ENTRY.
 #
-#   scan -> PENDING_ENTRY --(price touched target)--> ACTIVE -> HIT_TP/HIT_SL
-#                         \--(session ended, never touched)--> NOT_FILLED
+# GTC means the order NEVER expires on its own - it stays live across days and
+# weeks, giving a stock time to pull back after profit-taking. It ends only
+# when the price touches the limit (-> ACTIVE) or the user cancels it from the
+# dashboard (-> NOT_FILLED).
+#
+#   scan -> PENDING_ENTRY --(price touched target)---> ACTIVE -> HIT_TP/HIT_SL
+#                         \--(user cancels manually)-> NOT_FILLED
 # ---------------------------------------------------------------------------
 STATUS_ACTIVE = "ACTIVE"
 STATUS_PENDING_ENTRY = "PENDING_ENTRY"
@@ -31,6 +35,11 @@ CLOSED_STATUSES = (STATUS_HIT_TP, STATUS_HIT_SL, STATUS_MANUAL_CLOSE)
 # pending limit order was filled. Gives yfinance time to publish the first
 # intraday candles (and matches the "check ~15 minutes after open" rule).
 ENTRY_CHECK_DELAY_MINUTES = 15
+
+# yfinance only serves 5-minute candles for roughly the last 60 days. Beyond
+# that a GTC order can no longer be verified automatically, so it is left
+# pending for the user to resolve manually rather than silently mis-resolved.
+INTRADAY_HISTORY_LIMIT_DAYS = 55
 
 MARKET_TZ = "US/Eastern"
 
@@ -149,29 +158,39 @@ def get_session_bounds(session_date):
 
 def evaluate_limit_fill(ticker, target_entry, session_date, now_et=None):
     """
-    Determines whether a BUY LIMIT order at `target_entry` would have been
-    filled during the `session_date` trading session, using 5-minute candles.
+    Determines whether a GTC (Good-Til-Cancelled) BUY LIMIT order at
+    `target_entry` has been filled at any point from the start of
+    `session_date` up to now, using 5-minute candles.
 
-    Real-world fill rules (policy A - hard limit):
-      * If the session OPENS at or below the limit -> filled at the open price
+    GTC semantics: the order NEVER expires on its own. It stays live across
+    trading sessions until either the price touches the limit, or the user
+    cancels it manually from the dashboard. This mirrors how the order is
+    actually placed at the broker, and gives a stock a day or two to pull
+    back after profit-taking so the setup can still be caught.
+
+    Fill rules (hard limit):
+      * If any session OPENS at or below the limit -> filled at that open
         (a marketable limit order executes immediately, at the better price).
       * Otherwise, if any candle's Low touches the limit -> filled at the limit.
-      * Otherwise, while the session is still running -> still pending.
-      * Otherwise (session over, never touched) -> not filled.
+      * Otherwise -> still PENDING (indefinitely).
+
+    Note: this function never returns 'NOT_FILLED'. Only an explicit manual
+    cancel (`cancel_pending_manually`) can end a pending order.
 
     Args:
         ticker: ticker symbol
         target_entry: the limit price (float)
-        session_date: "YYYY-MM-DD" of the session the order is live in
+        session_date: "YYYY-MM-DD" of the first session the order is live in
         now_et: optional "current time" in US/Eastern (for retroactive checks)
 
     Returns:
         dict: {
-            'outcome': 'FILLED' | 'NOT_FILLED' | 'PENDING' | 'UNKNOWN',
+            'outcome': 'FILLED' | 'PENDING' | 'UNKNOWN',
             'fill_price': float|None,
             'fill_time_et': datetime|None,
-            'session_open_price': float|None,
-            'session_low': float|None,
+            'session_open_price': float|None,   # open of the FIRST session
+            'session_low': float|None,          # lowest low seen so far
+            'sessions_checked': int,
             'reason': str
         }
     """
@@ -185,91 +204,120 @@ def evaluate_limit_fill(ticker, target_entry, session_date, now_et=None):
         'fill_time_et': None,
         'session_open_price': None,
         'session_low': None,
+        'sessions_checked': 0,
         'reason': ''
     }
 
-    market_open, market_close = get_session_bounds(session_date)
-    if market_open is None:
-        result['reason'] = f"{session_date} is not a NYSE trading day"
-        return result
+    first_open, _first_close = get_session_bounds(session_date)
+    if first_open is None:
+        # The stored session date is not a trading day (holiday shift etc.).
+        # Fall back to the next real session so the order is not lost.
+        resolved, first_open, _first_close = get_entry_session(
+            datetime.strptime(session_date, "%Y-%m-%d")
+        )
+        if first_open is None:
+            result['outcome'] = 'PENDING'
+            result['reason'] = f"could not resolve a trading session from {session_date}"
+            return result
+        session_date = resolved
 
-    # Not open yet, or not enough time since the opening bell for data to exist
-    if now_et < market_open + timedelta(minutes=ENTRY_CHECK_DELAY_MINUTES):
+    # Order not live yet, or too early in the first session for data to exist
+    if now_et < first_open + timedelta(minutes=ENTRY_CHECK_DELAY_MINUTES):
         result['outcome'] = 'PENDING'
         result['reason'] = (f"waiting for session {session_date} "
                             f"(checks start {ENTRY_CHECK_DELAY_MINUTES} min after the open)")
         return result
 
-    # Download enough 5-minute history to cover the session (yfinance: max 60d)
-    days_back = (now_et.date() - market_open.date()).days
+    # yfinance only serves 5-minute candles for the last ~60 days.
+    days_back = (now_et.date() - first_open.date()).days
+    if days_back > INTRADAY_HISTORY_LIMIT_DAYS:
+        result['outcome'] = 'PENDING'
+        result['reason'] = (f"order older than {INTRADAY_HISTORY_LIMIT_DAYS} days - "
+                            f"intraday history no longer available, cannot verify automatically")
+        return result
+
     period = f"{max(5, min(days_back + 3, 59))}d"
     df = stock_api.get_intraday_data(ticker, period=period, interval="5m")
 
     if df is None or df.empty or "Low" not in df.columns or "Open" not in df.columns:
-        result['reason'] = f"no intraday data available for {ticker}"
+        result['outcome'] = 'PENDING'
+        result['reason'] = f"no intraday data available for {ticker} - order left live"
         return result
 
-    # Keep only candles belonging to this session's regular trading hours
+    # Keep every regular-hours candle from the first session onwards. GTC means
+    # we scan ALL sessions since the order was placed, not just the first one.
     try:
         idx = df.index
         if idx.tz is None:
             idx = idx.tz_localize('UTC')
             df = df.copy()
             df.index = idx
-        session_df = df[(idx >= market_open) & (idx <= market_close)]
+        window = df[idx >= first_open]
+        # Drop pre/post-market prints: a limit order only executes in RTH here.
+        window = window.between_time("09:30", "16:00")
     except Exception as e:
+        result['outcome'] = 'PENDING'
         result['reason'] = f"could not filter candles for {ticker}: {e}"
         return result
 
-    if session_df.empty:
-        # Data for that session is simply not published (yet). Never cancel an
-        # order just because data is missing - stay conservative.
-        result['reason'] = f"no candles for {ticker} on {session_date}"
+    if window.empty:
+        result['outcome'] = 'PENDING'
+        result['reason'] = f"no candles for {ticker} since {session_date} - order left live"
         return result
 
-    session_open_price = float(session_df["Open"].iloc[0])
-    session_low = float(session_df["Low"].min())
-    result['session_open_price'] = session_open_price
-    result['session_low'] = session_low
+    result['sessions_checked'] = window.index.normalize().nunique()
+    result['session_low'] = float(window["Low"].min())
 
-    # Case 1: gap down / open at or below the limit -> immediate fill at the open
-    if session_open_price <= target_entry:
-        result['outcome'] = 'FILLED'
-        result['fill_price'] = session_open_price
-        result['fill_time_et'] = session_df.index[0].to_pydatetime()
-        result['reason'] = (f"opened at {session_open_price:.2f} <= limit "
-                            f"{target_entry:.2f} (filled at the open)")
-        return result
+    # Walk sessions in order; the first session that opens at/below the limit
+    # fills at its open, otherwise the first candle that touches it fills at
+    # the limit price.
+    for session_day, day_candles in window.groupby(window.index.normalize()):
+        if day_candles.empty:
+            continue
 
-    # Case 2: price traded down through the limit at some point
-    for idx_ts, row in session_df.iterrows():
-        if float(row["Low"]) <= target_entry:
+        day_open = float(day_candles["Open"].iloc[0])
+        if result['session_open_price'] is None:
+            result['session_open_price'] = day_open
+
+        # Case 1: session opens at or below the limit -> immediate fill at open
+        if day_open <= target_entry:
             result['outcome'] = 'FILLED'
-            result['fill_price'] = float(target_entry)
-            result['fill_time_et'] = idx_ts.to_pydatetime()
-            result['reason'] = (f"price touched limit {target_entry:.2f} "
-                                f"(candle low {float(row['Low']):.2f})")
+            result['fill_price'] = day_open
+            result['fill_time_et'] = day_candles.index[0].to_pydatetime()
+            result['reason'] = (f"{session_day.strftime('%Y-%m-%d')} opened at {day_open:.2f} "
+                                f"<= limit {target_entry:.2f} (filled at the open)")
             return result
 
-    # Case 3: still trading - the order is alive until the closing bell
-    if now_et < market_close:
-        result['outcome'] = 'PENDING'
-        result['reason'] = (f"limit {target_entry:.2f} not touched yet "
-                            f"(session low so far {session_low:.2f}) - order still live")
-        return result
+        # Case 2: price traded down through the limit during the session
+        for idx_ts, row in day_candles.iterrows():
+            if float(row["Low"]) <= target_entry:
+                result['outcome'] = 'FILLED'
+                result['fill_price'] = float(target_entry)
+                result['fill_time_et'] = idx_ts.to_pydatetime()
+                result['reason'] = (f"price touched limit {target_entry:.2f} on "
+                                    f"{session_day.strftime('%Y-%m-%d')} "
+                                    f"(candle low {float(row['Low']):.2f})")
+                return result
 
-    # Case 4: session finished without ever touching the limit
-    result['outcome'] = 'NOT_FILLED'
-    result['reason'] = (f"session low {session_low:.2f} never reached limit "
-                        f"{target_entry:.2f} - order expired unfilled")
+    # Never touched so far. GTC -> the order simply stays live.
+    days_live = result['sessions_checked']
+    result['outcome'] = 'PENDING'
+    result['reason'] = (f"limit {target_entry:.2f} not touched in {days_live} "
+                        f"session(s) (lowest {result['session_low']:.2f}) - GTC order still live")
     return result
 
 
 def check_pending_entries(trades):
     """
     Processes all PENDING_ENTRY trades: fills the ones whose limit price was
-    actually touched during their entry session, and expires the ones whose
-    session ended without a fill.
+    actually touched at any point since the order was placed.
+
+    GTC behaviour: orders are NEVER expired automatically. An unfilled order
+    stays PENDING_ENTRY indefinitely - across days and weeks - exactly like a
+    Good-Til-Cancelled order at the broker. This deliberately gives a stock a
+    day or two to pull back after profit-taking so the setup can still be
+    caught. Only the user can end an order, via the "Cancel" button on the
+    dashboard (`cancel_pending_manually`).
 
     On fill, the trade is converted into a real position:
       * entry_price = the ACTUAL fill price (may be better than the limit)
@@ -312,10 +360,10 @@ def check_pending_entries(trades):
                 note=evaluation['reason']
             )
             print(f"🟢 {ticker} limit order FILLED at ${evaluation['fill_price']:.2f} - {evaluation['reason']}")
-        elif evaluation['outcome'] == 'NOT_FILLED':
-            expire_pending_entry(trade, note=evaluation['reason'])
-            print(f"⚪ {ticker} order NOT FILLED - {evaluation['reason']}")
         else:
+            # GTC: never auto-expire. The order stays live until the user
+            # cancels it explicitly from the dashboard.
+            trade["sessions_waiting"] = evaluation.get('sessions_checked', 0)
             print(f"⏳ {ticker} still pending - {evaluation['reason']}")
 
     return trades
@@ -362,9 +410,13 @@ def apply_entry_fill(trade, fill_price, fill_time_et=None, note=""):
 
 def expire_pending_entry(trade, note=""):
     """
-    Marks a PENDING_ENTRY trade as NOT_FILLED: the limit order expired without
-    execution, so no position was ever opened. Capital and the slot are freed,
+    Marks a PENDING_ENTRY trade as NOT_FILLED: the order ended without ever
+    being executed, so no position was opened. Capital and the slot are freed,
     and no commission is charged.
+
+    Under GTC this is only ever reached through an explicit user action
+    (the "Cancel" button / `cancel_pending_manually`), or from the retroactive
+    audit tool. Nothing in the automatic cycle calls it.
     """
     trade["status"] = STATUS_NOT_FILLED
     trade["quantity"] = 0
@@ -494,18 +546,18 @@ def update_portfolio_status(trades):
                 try:
                     current_price = float(df["Close"].iloc[-1])
                     last_date = df.index[-1].strftime("%Y-%m-%d")
-                    price_source = f"נכון לסגירת המסחר ב-{last_date}"
+                    price_source = f"As of the market close on {last_date}"
                 except Exception as e:
                     print(f"Error parsing live data for {ticker}: {e}")
             
             # Method 2: Fallback to get_last_price (works on weekends)
             if current_price is None:
-                print(f"📊 {ticker}: משתמש במחיר סגירה אחרון (שוק סגור)")
+                print(f"📊 {ticker}: using the last closing price (market closed)")
                 current_price, last_date = stock_api.get_last_price(ticker)
                 if current_price and last_date:
-                    price_source = f"נכון לסגירת המסחר האחרונה ({last_date})"
+                    price_source = f"As of the last market close ({last_date})"
                 elif current_price:
-                    price_source = "נכון לסגירת המסחר האחרונה"
+                    price_source = "As of the last market close"
             
             # Update trade if we got a price
             if current_price is not None:
@@ -532,7 +584,7 @@ def update_portfolio_status(trades):
                     trade["total_commission"] = trade.get("commission_entry", commission) + commission
                 # No time-based status changes - positions stay ACTIVE until SL/TP hit
             else:
-                print(f"❌ {ticker}: לא ניתן לקבל מחיר - מדלג על עדכון")
+                print(f"❌ {ticker}: could not fetch a price - skipping update")
                 
     return trades
 
@@ -604,9 +656,10 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             entry_price = s['Close']
             signal_dt = datetime.now()
 
-            # Resolve the trading session in which this limit order will be live
-            session_date, _session_open, session_close = get_entry_session(signal_dt)
-            deadline = session_close.strftime("%Y-%m-%d %H:%M:%S %Z") if session_close is not None else None
+            # Resolve the FIRST trading session in which this limit order goes
+            # live. Being GTC, it has no deadline - it stays active from this
+            # session onwards until filled or manually cancelled.
+            session_date, _session_open, _session_close = get_entry_session(signal_dt)
 
             trade = {
                 "ticker": s['Ticker'],
@@ -625,7 +678,8 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "timestamp": signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "signal_timestamp": signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "entry_session_date": session_date,
-                "entry_deadline": deadline,
+                "time_in_force": "GTC",  # no expiry - cancelled manually only
+                "sessions_waiting": 0,
                 "weight_pct": weight_per_trade,
                 # Cash is reserved now; quantity is only final once we know the
                 # real fill price (which may be better than the limit).
@@ -639,8 +693,8 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             active_trades.append(trade)
             active_tickers.append(trade['ticker'])
             added_any = True
-            print(f"📋 Placed LIMIT order: {trade['ticker']} @ ${entry_price:.2f} "
-                  f"(session {session_date}, Weight: {weight_per_trade}%, Reserved: ${batch_position_size})")
+            print(f"📋 Placed GTC LIMIT order: {trade['ticker']} @ ${entry_price:.2f} "
+                  f"(live from {session_date}, Weight: {weight_per_trade}%, Reserved: ${batch_position_size})")
 
     return trades, added_any
 
@@ -667,19 +721,19 @@ def fill_pending_manually(trades, ticker, fill_price, fill_timestamp=None):
             break
 
     if target_trade is None:
-        message = f"לא נמצאה הוראה ממתינה עבור {ticker}"
+        message = f"No pending order found for {ticker}"
         print(f"❌ fill_pending_manually: {message}")
         return trades, False, message
 
     try:
         fill_price = float(fill_price)
     except (TypeError, ValueError):
-        message = "מחיר מילוי (fill_price) לא תקין"
+        message = "Invalid fill price (fill_price)"
         print(f"❌ fill_pending_manually: {message}")
         return trades, False, message
 
     if fill_price <= 0:
-        message = "מחיר מילוי חייב להיות גדול מ-0"
+        message = "Fill price must be greater than 0"
         print(f"❌ fill_pending_manually: {message}")
         return trades, False, message
 
@@ -688,7 +742,7 @@ def fill_pending_manually(trades, ticker, fill_price, fill_timestamp=None):
         try:
             naive_dt = datetime.strptime(fill_timestamp, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            message = "פורמט תאריך מילוי לא תקין (נדרש YYYY-MM-DD HH:MM:SS)"
+            message = "Invalid fill date format (expected YYYY-MM-DD HH:MM:SS)"
             print(f"❌ fill_pending_manually: {message}")
             return trades, False, message
         fill_dt_et = naive_dt.astimezone().astimezone(eastern)
@@ -696,9 +750,9 @@ def fill_pending_manually(trades, ticker, fill_price, fill_timestamp=None):
         fill_dt_et = datetime.now(eastern)
 
     apply_entry_fill(target_trade, fill_price, fill_time_et=fill_dt_et,
-                     note="מולא ידנית (סנכרון מול הברוקר)")
+                     note="Filled manually (broker sync)")
 
-    message = f"{ticker} סומן כמולא ידנית ב-${fill_price:.2f}"
+    message = f"{ticker} was marked as manually filled at ${fill_price:.2f}"
     print(f"✍️ {message}")
     return trades, True, message
 
@@ -723,13 +777,13 @@ def cancel_pending_manually(trades, ticker, reason=None):
             break
 
     if target_trade is None:
-        message = f"לא נמצאה הוראה ממתינה עבור {ticker}"
+        message = f"No pending order found for {ticker}"
         print(f"❌ cancel_pending_manually: {message}")
         return trades, False, message
 
-    expire_pending_entry(target_trade, note=reason or "בוטלה ידנית - לא בוצעה קנייה בפועל")
+    expire_pending_entry(target_trade, note=reason or "Cancelled manually - no actual buy was executed")
 
-    message = f"ההוראה עבור {ticker} בוטלה - לא נפתחה פוזיציה"
+    message = f"The order for {ticker} was cancelled - no position was opened"
     print(f"🚫 {message}")
     return trades, True, message
 
@@ -758,19 +812,19 @@ def close_trade_manually(trades, ticker, exit_price, exit_timestamp=None):
             break
 
     if target_trade is None:
-        message = f"לא נמצאה פוזיציה פעילה עבור {ticker}"
+        message = f"No active position found for {ticker}"
         print(f"❌ close_trade_manually: {message}")
         return trades, False, message
 
     try:
         exit_price = float(exit_price)
     except (TypeError, ValueError):
-        message = "מחיר יציאה (exit_price) לא תקין"
+        message = "Invalid exit price (exit_price)"
         print(f"❌ close_trade_manually: {message}")
         return trades, False, message
 
     if exit_price <= 0:
-        message = "מחיר יציאה חייב להיות גדול מ-0"
+        message = "Exit price must be greater than 0"
         print(f"❌ close_trade_manually: {message}")
         return trades, False, message
 
@@ -780,7 +834,7 @@ def close_trade_manually(trades, ticker, exit_price, exit_timestamp=None):
             # Validate provided timestamp format
             datetime.strptime(exit_timestamp, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            message = "פורמט תאריך יציאה לא תקין (נדרש YYYY-MM-DD HH:MM:SS)"
+            message = "Invalid exit date format (expected YYYY-MM-DD HH:MM:SS)"
             print(f"❌ close_trade_manually: {message}")
             return trades, False, message
     else:
@@ -799,7 +853,7 @@ def close_trade_manually(trades, ticker, exit_price, exit_timestamp=None):
     target_trade["commission_exit"] = commission
     target_trade["total_commission"] = target_trade.get("commission_entry", commission) + commission
 
-    message = f"{ticker} נסגר ידנית ב-${exit_price:.2f} (P&L: {target_trade['pnl_pct']:+.2f}%)"
+    message = f"{ticker} was closed manually at ${exit_price:.2f} (P&L: {target_trade['pnl_pct']:+.2f}%)"
     print(f"✋ {message}")
 
     return trades, True, message

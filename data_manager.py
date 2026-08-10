@@ -241,19 +241,19 @@ def import_user_data(backup_data):
     import currency_manager
 
     if not isinstance(backup_data, dict):
-        return False, "קובץ הגיבוי אינו תקין (פורמט לא מוכר)."
+        return False, "The backup file is invalid (unrecognized format)."
 
     trades_db = backup_data.get("trades_db")
     deposits_history = backup_data.get("deposits_history")
 
     if trades_db is None or deposits_history is None:
-        return False, "קובץ הגיבוי חסר שדות נדרשים (trades_db / deposits_history)."
+        return False, "The backup file is missing required fields (trades_db / deposits_history)."
 
     # Basic structural validation
     if "trades" not in trades_db or "portfolio_metadata" not in trades_db:
-        return False, "קובץ הגיבוי לא תקין: trades_db חסר 'trades' או 'portfolio_metadata'."
+        return False, "Invalid backup file: trades_db is missing 'trades' or 'portfolio_metadata'."
     if "deposits" not in deposits_history or "metadata" not in deposits_history:
-        return False, "קובץ הגיבוי לא תקין: deposits_history חסר 'deposits' או 'metadata'."
+        return False, "Invalid backup file: deposits_history is missing 'deposits' or 'metadata'."
 
     # Safety net: archive current state before overwriting (deduplicated + pruned)
     try:
@@ -266,8 +266,8 @@ def import_user_data(backup_data):
         save_db(trades_db)
         currency_manager.save_deposits_history(deposits_history)
     except Exception as e:
-        return False, f"שגיאה בשחזור הנתונים: {e}"
+        return False, f"Error while restoring the data: {e}"
 
-    return True, "הנתונים שוחזרו בהצלחה! המצב הקודם נשמר כגיבוי בטיחות."
+    return True, "Data restored successfully! The previous state was saved as a safety backup."
 
 

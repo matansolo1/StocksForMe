@@ -566,7 +566,7 @@ def update_deposit(deposit_id, date=None, amount=None, fx_rate=None, description
     deposit = next((d for d in history['deposits'] if d.get('id') == deposit_id), None)
 
     if deposit is None:
-        return False, f"הפקדה עם מזהה {deposit_id} לא נמצאה."
+        return False, f"Deposit with id {deposit_id} was not found."
 
     if date is not None:
         deposit['date'] = date
@@ -613,7 +613,7 @@ def update_deposit(deposit_id, date=None, amount=None, fx_rate=None, description
 
     _recalculate_metadata_from_deposits(history)
     save_deposits_history(history)
-    return True, "ההפקדה עודכנה בהצלחה."
+    return True, "Deposit updated successfully."
 
 
 def delete_deposit(deposit_id):
@@ -628,8 +628,8 @@ def delete_deposit(deposit_id):
     history['deposits'] = [d for d in history['deposits'] if d.get('id') != deposit_id]
 
     if len(history['deposits']) == original_len:
-        return False, f"הפקדה עם מזהה {deposit_id} לא נמצאה."
+        return False, f"Deposit with id {deposit_id} was not found."
 
     _recalculate_metadata_from_deposits(history)
     save_deposits_history(history)
-    return True, "ההפקדה נמחקה בהצלחה."
+    return True, "Deposit deleted successfully."

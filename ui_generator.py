@@ -9,67 +9,67 @@ FUNNEL_TEMPLATE = """
     <div class="funnel-stage stage-1">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 1: סינון ראשוני (Market Universe)</h3>
-            <p><strong>הלוגיקה:</strong> התמקדות במניות צמיחה וטכנולוגיה מובילות (Nasdaq-100 & High Growth).</p>
-            <p><strong>המתמטיקה:</strong> רשימה נבחרת של ~100 מניות עם נזילות גבוהה ושווי שוק משמעותי שמנפה 98% מהשוק.</p>
+            <h3>Stage 1: Initial Filtering (Market Universe)</h3>
+            <p><strong>The Logic:</strong> Focusing on leading growth and technology stocks (Nasdaq-100 &amp; High Growth).</p>
+            <p><strong>The Math:</strong> A curated list of ~100 stocks with high liquidity and significant market cap, which filters out 98% of the market.</p>
         </div>
     </div>
     <div class="funnel-stage stage-2">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 2: הלב הטכני (RSI & Global Trend Filter)</h3>
-            <p><strong>הלוגיקה:</strong> איתור מניות במצב "מכירת יתר" קיצוני (Oversold) רק כאשר המדד המרכזי במגמת עלייה גלובלית.</p>
-            <p><strong>המתמטיקה:</strong> <code>RSI(14) < 35</code> וגם <code>Price < SMA(20)</code>, ובנוסף מדד ה-S&P 500 במצב שורי: <code>SPY > SMA(200)</code>.</p>
+            <h3>Stage 2: The Technical Core (RSI &amp; Global Trend Filter)</h3>
+            <p><strong>The Logic:</strong> Spotting stocks in an extreme "oversold" state, only when the main index is in a global uptrend.</p>
+            <p><strong>The Math:</strong> <code>RSI(14) < 35</code> and <code>Price < SMA(20)</code>, plus the S&amp;P 500 index in a bullish state: <code>SPY > SMA(200)</code>.</p>
         </div>
     </div>
     <div class="funnel-stage stage-3">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 3: הגנת דוחות (Earnings Filter)</h3>
-            <p><strong>הלוגיקה:</strong> מניעת סיכון "Gap Risk" הנובע מפרסומים כספיים קרובים.</p>
-            <p><strong>המתמטיקה:</strong> בדיקה מול <code>yfinance</code>. אם יש דוח ב-7 הימים הקרובים, המניה נפסלת אוטומטית ללא קשר לאיתות הטכני.</p>
+            <h3>Stage 3: Earnings Protection (Earnings Filter)</h3>
+            <p><strong>The Logic:</strong> Avoiding "Gap Risk" caused by upcoming financial reports.</p>
+            <p><strong>The Math:</strong> A check against <code>yfinance</code>. If earnings are due within the next 7 days, the stock is automatically disqualified regardless of the technical signal.</p>
         </div>
     </div>
     <div class="funnel-stage stage-4">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 4: מנוע הדירוג (Scoring Engine)</h3>
-            <p><strong>הלוגיקה:</strong> בחירת 3 המניות עם פוטנציאל ההתאוששות הגבוה ביותר ביחס לתנודתיות.</p>
-            <p><strong>המתמטיקה:</strong> <code>RankScore = (SMA20 - Close) / Volatility</code>. אנחנו מדרגים לפי המרחק מהממוצע חלקי סטיית התקן (Z-Score) ובוחרים את ה-TOP 3.</p>
+            <h3>Stage 4: The Scoring Engine</h3>
+            <p><strong>The Logic:</strong> Picking the 3 stocks with the highest recovery potential relative to their volatility.</p>
+            <p><strong>The Math:</strong> <code>RankScore = (SMA20 - Close) / Volatility</code>. We rank by the distance from the moving average divided by the standard deviation (Z-Score) and select the TOP 3.</p>
         </div>
     </div>
     <div class="funnel-stage stage-5">
         <div class="funnel-shape"></div>
         <div class="funnel-content">
-            <h3>שלב 5: ניהול סיכונים (Execution)</h3>
-            <p><strong>הלוגיקה:</strong> הגנה מוגברת על ההון והצבת יעדים ריאליים מבוססי תנודתיות.</p>
-            <p><strong>המתמטיקה:</strong> 
-                <code>TP = SMA(20)</code> (חזרה לממוצע), 
-                <code>SL = Price - (3 * Volatility * Price)</code> (שימוש ב-3 סטיות תקן - מורחב פי 1.5 להגנה מרעשי שוק).
+            <h3>Stage 5: Risk Management (Execution)</h3>
+            <p><strong>The Logic:</strong> Stronger capital protection and realistic, volatility-based targets.</p>
+            <p><strong>The Math:</strong> 
+                <code>TP = SMA(20)</code> (reversion to the mean), 
+                <code>SL = Price - (3 * Volatility * Price)</code> (using 3 standard deviations - widened by 1.5x to protect against market noise).
             </p>
         </div>
     </div>
 </div>
 
 <div class="strategy-doc">
-    <h2>ספר הדרכה: אסטרטגיית "Mean Reversion" מבוססת תנודתיות</h2>
-    <p>המערכת פועלת על פי עקרון החזרה לממוצע (Mean Reversion). היא מחפשת מניות חזקות שנמצאות בתיקון זמני.</p>
+    <h2>Playbook: Volatility-Based "Mean Reversion" Strategy</h2>
+    <p>The system operates on the Mean Reversion principle. It looks for strong stocks that are in a temporary pullback.</p>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
         <div class="doc-card">
-            <h4>🛡️ מנגנוני הגנה</h4>
+            <h4>🛡️ Protection Mechanisms</h4>
             <ul>
-                <li><strong>ניהול סיכונים:</strong> חשיפה של מקסימום 33% מהפורטפוליו לכל פוזיציה.</li>
-                <li><strong>Stop Loss קבוע:</strong> 5% מתחת למחיר הכניסה.</li>
-                <li><strong>Take Profit קבוע:</strong> 10% מעל מחיר הכניסה (יחס 1:2).</li>
+                <li><strong>Risk Management:</strong> Maximum exposure of 33% of the portfolio per position.</li>
+                <li><strong>Fixed Stop Loss:</strong> 5% below the entry price.</li>
+                <li><strong>Fixed Take Profit:</strong> 10% above the entry price (1:2 ratio).</li>
             </ul>
         </div>
         <div class="doc-card">
-            <h4>📈 חוקי יציאה</h4>
+            <h4>📈 Exit Rules</h4>
             <ul>
-                <li><strong>HIT_TP:</strong> יציאה אוטומטית ב-+10% רווח.</li>
-                <li><strong>HIT_SL:</strong> יציאה אוטומטית ב--5% הפסד.</li>
-                <li><strong>אין יציאה ידנית:</strong> פוזיציות נסגרות רק ב-SL/TP, ללא מגבלת זמן.</li>
+                <li><strong>HIT_TP:</strong> Automatic exit at +10% profit.</li>
+                <li><strong>HIT_SL:</strong> Automatic exit at -5% loss.</li>
+                <li><strong>No Manual Exit:</strong> Positions are closed only at SL/TP, with no time limit.</li>
             </ul>
         </div>
     </div>
@@ -196,7 +196,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 Rate: {{ils_buy_rate}}₪ → {{ils_current_rate}}₪ ({{ils_rate_change_sign}}{{ils_rate_change_pct}}%)
             </div>
             <button onclick="openFxManagementModal()" class="btn btn-secondary" style="margin-top: 12px; border-color: #4d94ff; color: #4d94ff; padding: 6px 14px; font-size: 0.8rem;">
-                ✏️ ניהול הפקדות ושערי המרה
+                ✏️ Manage Deposits & FX Rates
             </button>
         </div>
     </div>
@@ -212,14 +212,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             <div style="margin-top: 25px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                    <h3 style="margin: 0;">⏳ Pending Entries (הוראות לימיט ממתינות)</h3>
-                    <button onclick="checkPendingNow()" class="btn btn-secondary" style="padding: 5px 12px; font-size: 0.75rem; border-color: #ffb74d; color: #ffb74d;">בדוק עכשיו</button>
+                    <h3 style="margin: 0;">⏳ Pending Entries (waiting limit orders)</h3>
+                    <button onclick="checkPendingNow()" class="btn btn-secondary" style="padding: 5px 12px; font-size: 0.75rem; border-color: #ffb74d; color: #ffb74d;">Check Now</button>
                 </div>
                 <div style="color: var(--text-dim); font-size: 0.78rem; margin: 6px 0 10px;">
-                    הוראות אלו טרם בוצעו. הן ייכנסו כפוזיציה רק אם המחיר ייגע במחיר היעד במהלך יום המסחר - אחרת יסומנו כ-NOT_FILLED (בדיוק כמו אצל הברוקר).
+                    <strong style="color:#ffb74d;">GTC</strong> (Good-Til-Cancelled) orders - they stay active with no time limit, exactly like at the broker.
+                    They become a position the moment the price touches the target price, and are never cancelled automatically.
+                    <strong>The only way to close an order is the "Cancel Order" button.</strong>
                 </div>
                 <table>
-                    <thead><tr><th>Status</th><th>Ticker</th><th>מחיר יעד</th><th>מחיר נוכחי</th><th>מרחק</th><th>יום מסחר</th><th>הון משוריין</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Status</th><th>Ticker</th><th>Target Price</th><th>Current Price</th><th>Distance</th><th>Pending Since</th><th>Trading Days</th><th>Reserved Capital</th><th>Action</th></tr></thead>
                     <tbody>{{pending_rows}}</tbody>
                 </table>
             </div>
@@ -285,7 +287,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Historical Backtesting Section -->
     <div class="explanation-section" style="margin-top: 30px;">
         <h2 style="color: #39FF14; margin-top: 0;">Historical Backtesting (5 Years)</h2>
-        <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">בדיקת אסטרטגיית החזרה לממוצע (Mean Reversion) לאחור לאורך 5 השנים האחרונות שבוצעו שבוע אחר שבוע (קנייה ביום המסחר הראשון של השבוע ב-Open, ומכירה בסוף השבוע ב-Close).</p>
+        <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">A backtest of the Mean Reversion strategy over the last 5 years, executed week by week (buying on the first trading day of the week at the Open, and selling at the end of the week at the Close).</p>
         
         <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px; align-items: start;">
             <!-- Inputs and Stats -->
@@ -399,7 +401,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span>📊</span> Strategy Cheat Sheet & Robustness Matrix
         </h2>
         <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">
-            סיכום ממצאי המחקר ומבחני החוסן (Robustness Tests) על פני תקופות שוק שונות. השורה המודגשת מייצגת את האסטרטגיה המנצחת שנבחרה לייצור.
+            A summary of the research findings and robustness tests across different market regimes. The highlighted row represents the winning strategy selected for production.
         </p>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
@@ -426,7 +428,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+63.34% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 35.5%)</span></td>
                         <td style="padding: 12px; text-align: center; color: #39FF14;">+12.8%</td>
                         <td style="padding: 12px; text-align: center; color: #ff5252;">-38.8% / -44.9%</td>
-                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">סובלת מתפיסת סכינים נופלות בשוק רגוע ומפסידה למדד.</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: left;">Suffers from catching falling knives in a calm market and underperforms the index.</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #262626; background: #111;">
                         <td style="padding: 12px; font-weight: bold;">Momentum (Default)</td>
@@ -437,7 +439,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+148.73% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 37.5%)</span></td>
                         <td style="padding: 12px; text-align: center; color: #39FF14;">+136.6%</td>
                         <td style="padding: 12px; text-align: center; color: #ff5252;">-33.5% / -20.6%</td>
-                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">נקודת מוצא טובה, אך נוטה לחטוף Bull Traps בשווקים תנודתיים.</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: left;">A good starting point, but tends to get hit by bull traps in volatile markets.</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #262626; background: #111;">
                         <td style="padding: 12px; font-weight: bold;">Momentum (Scenario 1)</td>
@@ -448,7 +450,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+198.16% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 34.5%)</span></td>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+236.7%</td>
                         <td style="padding: 12px; text-align: center; color: #ff5252;">-27.3% / -19.5%</td>
-                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">חגורות בטיחות קשוחות. יחס R:R של 1:3 שמגן על התיק ומציג חוסן גבוה.</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: left;">Tight safety belts. A 1:3 R:R ratio that protects the portfolio and shows high robustness.</td>
                     </tr>
                     <tr style="border-bottom: 1px solid #262626; background: #111;">
                         <td style="padding: 12px; font-weight: bold;">Momentum (Scenario 2)</td>
@@ -459,7 +461,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+268.60% <span style="font-size: 0.8rem; color: var(--text-dim); font-weight: normal;">(WR: 47.0%)</span></td>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+237.6%</td>
                         <td style="padding: 12px; text-align: center; color: #ff5252;">-41.8% / -17.6%</td>
-                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: right; direction: rtl;">מקסום רווחים קיצוני בשוק שורי וליניארי, אך מסוכן ומדמם בשוק תנודתי.</td>
+                        <td style="padding: 12px; color: var(--text-dim); font-size: 0.85rem; text-align: left;">Extreme profit maximization in a linear bull market, but risky and bleeding in a volatile one.</td>
                     </tr>
                     <!-- WINNING ROW (Highlighted with soft green background and bright neon green border) -->
                     <tr style="outline: 2px solid #39FF14; background: rgba(57, 255, 20, 0.08); box-shadow: 0 0 15px rgba(57, 255, 20, 0.15);">
@@ -471,7 +473,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+232.78% <span style="font-size: 0.8rem; color: #39FF14; font-weight: normal;">(WR: 43.6%)</span></td>
                         <td style="padding: 12px; text-align: center; color: #39FF14; font-weight: bold;">+567.8%</td>
                         <td style="padding: 12px; text-align: center; color: #ff5252; font-weight: bold;">-22.0% / -25.4%</td>
-                        <td style="padding: 12px; color: #fff; font-weight: bold; font-size: 0.85rem; text-align: right; direction: rtl;">הגביע הקדוש. אחוז הצלחה יציב לחלוטין בשתי התקופות ותשואה מטורפת.</td>
+                        <td style="padding: 12px; color: #fff; font-weight: bold; font-size: 0.85rem; text-align: left;">The holy grail. A completely stable win rate across both eras and an outstanding return.</td>
                     </tr>
                 </tbody>
             </table>
@@ -489,31 +491,31 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Data Management Section (Backup & Restore) -->
     <div class="explanation-section" style="margin-top: 30px;">
         <h2 style="color: #a78bfa; margin-top: 0; display: flex; align-items: center; gap: 10px;">
-            <span>🗄️</span> ניהול נתונים (גיבוי ושחזור)
+            <span>🗄️</span> Data Management (Backup & Restore)
         </h2>
         <p style="color: var(--text-dim); margin-bottom: 20px; line-height: 1.6;">
-            כל הדאטה האישי שלך - עסקאות, פוזיציות פעילות והיסטוריות, עמלות מסחר, הפקדות ועמלות המרת מטבע -
-            מאוחד בקובץ גיבוי יחיד. ניתן להוריד אותו ולהעלות אותו במחשב אחר כדי להמשיך בדיוק מאותה נקודה.
+            All of your personal data - trades, active and historical positions, trading commissions, deposits and FX conversion fees -
+            is bundled into a single backup file. You can download it and upload it on another computer to continue from exactly the same point.
         </p>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
-                <h4 style="margin-top: 0; color: white;">💾 גיבוי דאטה</h4>
+                <h4 style="margin-top: 0; color: white;">💾 Data Backup</h4>
                 <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
-                    מוריד קובץ JSON יחיד עם כל הטריידים, ההפקדות ועמלות המטבע שלך.
+                    Downloads a single JSON file containing all your trades, deposits and FX fees.
                 </p>
                 <button onclick="downloadBackup()" class="btn btn-primary" style="width: 100%; background: #a78bfa; color: #0a0a0a; font-weight: bold;">
-                    💾 הורד גיבוי דאטה
+                    💾 Download Data Backup
                 </button>
             </div>
             <div style="background: #1c1c1c; padding: 20px; border-radius: 12px; border: 1px solid #333;">
-                <h4 style="margin-top: 0; color: white;">📤 טעינת דאטה</h4>
+                <h4 style="margin-top: 0; color: white;">📤 Data Restore</h4>
                 <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
-                    מעלה קובץ גיבוי קודם ומשחזר ממנו את כל הנתונים. <strong style="color: #f39c12;">שים לב:</strong>
-                    זה יחליף את הנתונים הנוכחיים (גיבוי בטיחות אוטומטי נוצר קודם).
+                    Uploads a previous backup file and restores all the data from it. <strong style="color: #f39c12;">Note:</strong>
+                    this will replace the current data (an automatic safety backup is created first).
                 </p>
                 <input type="file" id="restoreFileInput" accept=".json" style="display: none;" onchange="handleRestoreFileSelected(event)">
                 <button onclick="document.getElementById('restoreFileInput').click()" class="btn btn-secondary" style="width: 100%; border-color: #a78bfa; color: #a78bfa;">
-                    📤 בחר קובץ גיבוי לשחזור
+                    📤 Choose a Backup File to Restore
                 </button>
             </div>
         </div>
@@ -523,17 +525,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <!-- Restore Confirmation Modal -->
     <div id="restoreConfirmModal" style="display: none; position: fixed; z-index: 1200; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
         <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 480px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
-            <h2 style="margin-top: 0; color: #f39c12;">⚠️ אישור שחזור נתונים</h2>
+            <h2 style="margin-top: 0; color: #f39c12;">⚠️ Confirm Data Restore</h2>
             <p style="color: #e0e0e0; font-size: 0.95rem; line-height: 1.6;">
-                פעולה זו תחליף את <strong>כל</strong> הטריידים, ההפקדות ועמלות המטבע הנוכחיים בקובץ שנטען.
+                This action will replace <strong>all</strong> of the current trades, deposits and FX fees with the uploaded file.
             </p>
             <p style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.5;">
-                המצב הנוכחי יישמר אוטומטית כגיבוי בטיחות בתיקיית <code>backups/</code> לפני ההחלפה (3 גיבויים אחרונים נשמרים), כך שניתן לשחזר ידנית אם טעית.
+                The current state is automatically saved as a safety backup in the <code>backups/</code> folder before the replacement (the last 3 backups are kept), so you can restore it manually if you made a mistake.
 
             </p>
             <div style="display: flex; justify-content: flex-end; margin-top: 25px; gap: 10px;">
-                <button id="restoreConfirmBtn" onclick="confirmRestoreUpload()" class="btn btn-primary" style="background: #f39c12; color: #0a0a0a; border: none;">כן, החלף נתונים</button>
-                <button onclick="cancelRestoreUpload()" class="btn btn-secondary">ביטול</button>
+                <button id="restoreConfirmBtn" onclick="confirmRestoreUpload()" class="btn btn-primary" style="background: #f39c12; color: #0a0a0a; border: none;">Yes, Replace Data</button>
+                <button onclick="cancelRestoreUpload()" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -785,19 +787,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             try {
                 const response = await fetch('/api/check-pending', { method: 'POST' });
                 const data = await response.json();
-                alert(data.message || 'הבדיקה הושלמה.');
+                alert(data.message || 'The check has completed.');
                 location.reload();
             } catch (e) {
-                alert('שגיאת רשת: ' + e);
+                alert('Network error: ' + e);
             }
         };
 
         window.fillPendingOrder = async function(ticker, targetPrice) {
-            const input = prompt(`באיזה מחיר נקנתה ${ticker} בפועל?`, targetPrice);
+            const input = prompt(`At what price was ${ticker} actually bought?`, targetPrice);
             if (input === null) return;
             const fillPrice = parseFloat(input);
             if (isNaN(fillPrice) || fillPrice <= 0) {
-                alert('יש להזין מחיר תקין.');
+                alert('Please enter a valid price.');
                 return;
             }
             try {
@@ -810,23 +812,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 alert(data.message);
                 if (data.success) location.reload();
             } catch (e) {
-                alert('שגיאת רשת: ' + e);
+                alert('Network error: ' + e);
             }
         };
 
         window.cancelPendingOrder = async function(ticker) {
-            if (!confirm(`לבטל את ההוראה עבור ${ticker}? הפוזיציה תסומן כ-NOT_FILLED וההון ישוחרר.`)) return;
+            const msg = `Cancel the GTC order for ${ticker}?\n\n` +
+                        `• The order will be marked as NOT_FILLED (no position was opened)\n` +
+                        `• The slot and the reserved capital will be released for the next scan\n` +
+                        `• No commission will be charged\n\n` +
+                        `Remember to cancel the order at your broker as well!`;
+            if (!confirm(msg)) return;
             try {
                 const response = await fetch('/api/cancel-pending', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ticker: ticker, reason: 'בוטלה ידנית מהדשבורד' })
+                    body: JSON.stringify({ ticker: ticker, reason: 'Cancelled manually from the dashboard' })
                 });
                 const data = await response.json();
                 alert(data.message);
                 if (data.success) location.reload();
             } catch (e) {
-                alert('שגיאת רשת: ' + e);
+                alert('Network error: ' + e);
             }
         };
 
@@ -860,12 +867,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             errorBox.innerText = '';
 
             if (!ticker || isNaN(exitPrice) || exitPrice <= 0) {
-                errorBox.innerText = 'יש להזין מחיר יציאה תקין.';
+                errorBox.innerText = 'Please enter a valid exit price.';
                 errorBox.style.display = 'block';
                 return;
             }
             if (!exitTimestampRaw) {
-                errorBox.innerText = 'יש להזין תאריך/שעת סגירה.';
+                errorBox.innerText = 'Please enter a close date/time.';
                 errorBox.style.display = 'block';
                 return;
             }
@@ -888,11 +895,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (data.success) {
                     location.reload();
                 } else {
-                    errorBox.innerText = data.message || 'שגיאה בסגירת הפוזיציה.';
+                    errorBox.innerText = data.message || 'Error while closing the position.';
                     errorBox.style.display = 'block';
                 }
             } catch (e) {
-                errorBox.innerText = 'שגיאת רשת: ' + e;
+                errorBox.innerText = 'Network error: ' + e;
                 errorBox.style.display = 'block';
             } finally {
                 btn.disabled = false;
@@ -998,8 +1005,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 
                 // Update last refresh time display
                 lastUpdateTime = new Date();
-                const timeStr = lastUpdateTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('market-label').innerText = `${marketData.message} | עודכן: ${timeStr}`;
+                const timeStr = lastUpdateTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('market-label').innerText = `${marketData.message} | Updated: ${timeStr}`;
                 
                 // If market is open or it's a weekday, refresh prices
                 const day = new Date().getDay();
@@ -1026,8 +1033,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const response = await fetch('/api/market-status');
                 const data = await response.json();
                 document.getElementById('market-led').className = data.status === 'open' ? 'led-dot led-green' : 'led-dot led-red';
-                const timeStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('market-label').innerText = `${data.message} | עודכן: ${timeStr}`;
+                const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('market-label').innerText = `${data.message} | Updated: ${timeStr}`;
             } catch (e) {
                 console.error('Error checking market status:', e);
             }
@@ -1091,13 +1098,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 document.getElementById('restoreFileInput').value = '';
 
                 if (data.success) {
-                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    showDataManagementStatus('✅ ' + data.message + ' Reloading...', false);
                     setTimeout(() => location.reload(), 1500);
                 } else {
                     showDataManagementStatus('❌ ' + data.message, true);
                 }
             } catch (e) {
-                showDataManagementStatus('❌ שגיאת רשת: ' + e, true);
+                showDataManagementStatus('❌ Network error: ' + e, true);
                 document.getElementById('restoreConfirmModal').style.display = 'none';
             } finally {
                 btn.disabled = false;
@@ -1127,7 +1134,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         async function loadDepositsTable() {
             const tbody = document.getElementById('depositsTableBody');
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">טוען...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">Loading...</td></tr>';
             try {
                 const response = await fetch('/api/deposits');
                 const data = await response.json();
@@ -1136,7 +1143,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 document.getElementById('defaultDepositFeeInput').value = (data.default_deposit_fee_usd != null) ? data.default_deposit_fee_usd : '';
 
                 if (!data.deposits || data.deposits.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">אין הפקדות רשומות.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">No deposits recorded.</td></tr>';
                     return;
                 }
 
@@ -1155,17 +1162,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         <td style="padding: 8px;">${dep.description || ''}</td>
                         <td style="padding: 8px; text-align: center;">${currency}</td>
                         <td style="padding: 8px; text-align: right;">${amount != null ? amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '--'}</td>
-                        <td style="padding: 8px; text-align: right; ${rate ? '' : 'color: #f39c12;'}">${rate ? rate.toFixed(4) : 'חסר (ברירת מחדל)'}</td>
+                        <td style="padding: 8px; text-align: right; ${rate ? '' : 'color: #f39c12;'}">${rate ? rate.toFixed(4) : 'Missing (default)'}</td>
                         <td style="padding: 8px; text-align: right;">${currency === 'ILS' ? (fee != null ? '$' + fee.toFixed(2) : '--') : '--'}</td>
                         <td style="padding: 8px; text-align: right;">${netUsd != null ? netUsd.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '--'}</td>
                         <td style="padding: 8px; text-align: center;">
-                            <button onclick="openEditDepositModal(${dep.id})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #4d94ff; color: #4d94ff;">✏️ ערוך</button>
+                            <button onclick="openEditDepositModal(${dep.id})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #4d94ff; color: #4d94ff;">✏️ Edit</button>
                         </td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (e) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 15px; color: #ff5252;">שגיאה בטעינת נתונים: ${e}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 15px; color: #ff5252;">Error loading data: ${e}</td></tr>`;
             }
         }
 
@@ -1176,7 +1183,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             if (isNaN(rate) || rate <= 0) {
                 statusEl.style.color = '#ff5252';
-                statusEl.innerText = 'יש להזין שער תקין.';
+                statusEl.innerText = 'Please enter a valid rate.';
                 return;
             }
 
@@ -1189,7 +1196,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const data = await response.json();
                 if (data.success) {
                     statusEl.style.color = '#39FF14';
-                    statusEl.innerText = '✅ נשמר!';
+                    statusEl.innerText = '✅ Saved!';
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     statusEl.style.color = '#ff5252';
@@ -1197,7 +1204,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             } catch (e) {
                 statusEl.style.color = '#ff5252';
-                statusEl.innerText = '❌ שגיאת רשת: ' + e;
+                statusEl.innerText = '❌ Network error: ' + e;
             }
         };
 
@@ -1208,7 +1215,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
             if (isNaN(fee) || fee < 0) {
                 statusEl.style.color = '#ff5252';
-                statusEl.innerText = 'יש להזין עמלה תקינה.';
+                statusEl.innerText = 'Please enter a valid fee.';
                 return;
             }
 
@@ -1221,7 +1228,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const data = await response.json();
                 if (data.success) {
                     statusEl.style.color = '#39FF14';
-                    statusEl.innerText = '✅ נשמר!';
+                    statusEl.innerText = '✅ Saved!';
                     setTimeout(() => { statusEl.innerText = ''; }, 2000);
                 } else {
                     statusEl.style.color = '#ff5252';
@@ -1229,7 +1236,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 }
             } catch (e) {
                 statusEl.style.color = '#ff5252';
-                statusEl.innerText = '❌ שגיאת רשת: ' + e;
+                statusEl.innerText = '❌ Network error: ' + e;
             }
         };
 
@@ -1241,7 +1248,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const data = await response.json();
                 const dep = (data.deposits || []).find(d => d.id === depositId);
                 if (!dep) {
-                    alert('הפקדה לא נמצאה.');
+                    alert('Deposit not found.');
                     return;
                 }
                 currentEditDeposit = dep;
@@ -1267,7 +1274,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 document.getElementById('editDepositModal').style.display = 'flex';
             } catch (e) {
-                alert('שגיאה בטעינת הפקדה: ' + e);
+                alert('Error loading deposit: ' + e);
             }
         };
 
@@ -1289,7 +1296,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             errorBox.style.display = 'none';
 
             if (isNaN(amount) || amount <= 0) {
-                errorBox.innerText = 'יש להזין סכום תקין.';
+                errorBox.innerText = 'Please enter a valid amount.';
                 errorBox.style.display = 'block';
                 return;
             }
@@ -1313,14 +1320,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (data.success) {
                     closeEditDepositModal();
                     closeFxManagementModal();
-                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    showDataManagementStatus('✅ ' + data.message + ' Reloading...', false);
                     setTimeout(() => location.reload(), 1000);
                 } else {
-                    errorBox.innerText = data.message || 'שגיאה בעדכון ההפקדה.';
+                    errorBox.innerText = data.message || 'Error while updating the deposit.';
                     errorBox.style.display = 'block';
                 }
             } catch (e) {
-                errorBox.innerText = 'שגיאת רשת: ' + e;
+                errorBox.innerText = 'Network error: ' + e;
                 errorBox.style.display = 'block';
             } finally {
                 btn.disabled = false;
@@ -1330,7 +1337,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         window.deleteDepositFromModal = async function() {
             const depositId = parseInt(document.getElementById('editDepositId').value);
-            if (!confirm('האם אתה בטוח שברצונך למחוק הפקדה זו? פעולה זו אינה הפיכה.')) {
+            if (!confirm('Are you sure you want to delete this deposit? This action cannot be undone.')) {
                 return;
             }
 
@@ -1341,13 +1348,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 if (data.success) {
                     closeEditDepositModal();
                     closeFxManagementModal();
-                    showDataManagementStatus('✅ ' + data.message + ' טוען מחדש...', false);
+                    showDataManagementStatus('✅ ' + data.message + ' Reloading...', false);
                     setTimeout(() => location.reload(), 1000);
                 } else {
                     alert('❌ ' + data.message);
                 }
             } catch (e) {
-                alert('❌ שגיאת רשת: ' + e);
+                alert('❌ Network error: ' + e);
             }
         };
 
@@ -1379,7 +1386,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         window.toggleAddDepositCurrencyFields = function() {
             const isIls = document.querySelector('input[name="addDepositCurrency"]:checked').value === 'ILS';
-            document.getElementById('addDepositAmountLabel').innerText = isIls ? '\u05e1\u05db\u05d5\u05dd (\u20aa):' : '\u05e1\u05db\u05d5\u05dd ($):';
+            document.getElementById('addDepositAmountLabel').innerText = isIls ? 'Amount (\u20aa):' : 'Amount ($):';
             document.getElementById('addDepositFeeRow').style.display = isIls ? 'block' : 'none';
             document.getElementById('addDepositFxRate').parentElement.style.display = isIls ? 'block' : 'none';
             updateAddDepositPreview();
@@ -1394,19 +1401,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             const fee = parseFloat(document.getElementById('addDepositFee').value) || 0;
 
             if (isNaN(amount) || amount <= 0) {
-                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: --';
+                previewEl.innerText = 'Net to portfolio: --';
                 return;
             }
             if (!isIls) {
-                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: ~$' + amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                previewEl.innerText = 'Net to portfolio: ~$' + amount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
                 return;
             }
             if (!fxRate || fxRate <= 0) {
-                previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: \u05d9\u05d7\u05d5\u05e9\u05d1 \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05dc\u05e4\u05d9 \u05d4\u05ea\u05d0\u05e8\u05d9\u05da';
+                previewEl.innerText = 'Net to portfolio: calculated automatically by date';
                 return;
             }
             const net = (amount / fxRate) - fee;
-            previewEl.innerText = '\u05e0\u05d8\u05d5 \u05dc\u05ea\u05d9\u05e7: ~$' + net.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            previewEl.innerText = 'Net to portfolio: ~$' + net.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
         };
 
         window.submitAddDeposit = async function() {
@@ -1419,12 +1426,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             errorBox.style.display = 'none';
 
             if (!date) {
-                errorBox.innerText = '\u05d9\u05e9 \u05dc\u05d1\u05d7\u05d5\u05e8 \u05ea\u05d0\u05e8\u05d9\u05da.';
+                errorBox.innerText = 'Please choose a date.';
                 errorBox.style.display = 'block';
                 return;
             }
             if (isNaN(amount) || amount <= 0) {
-                errorBox.innerText = '\u05d9\u05e9 \u05dc\u05d4\u05d6\u05d9\u05df \u05e1\u05db\u05d5\u05dd \u05ea\u05e7\u05d9\u05df (\u05d2\u05d3\u05d5\u05dc \u05de-0).';
+                errorBox.innerText = 'Please enter a valid amount (greater than 0).';
                 errorBox.style.display = 'block';
                 return;
             }
@@ -1541,29 +1548,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <!-- FX / Deposits Management Modal -->
     <div id="fxManagementModal" style="display: none; position: fixed; z-index: 1150; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.85); align-items: center; justify-content: center;">
-        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 950px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
-            <span onclick="closeFxManagementModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 950px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <span onclick="closeFxManagementModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
             <h2 style="margin-top: 0; color: #4d94ff; display: flex; align-items: center; justify-content: space-between; gap: 20px;">
-                <span>✏️ ניהול הפקדות ושערי המרה</span>
-                <button onclick="openAddDepositModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; font-size: 0.85rem; padding: 8px 14px;">➕ הוסף הפקדה ידנית</button>
+                <span>✏️ Manage Deposits & FX Rates</span>
+                <button onclick="openAddDepositModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; font-size: 0.85rem; padding: 8px 14px;">➕ Add Manual Deposit</button>
             </h2>
 
             <!-- Default FX Rate + Default Deposit Fee Section -->
             <div style="background: #1c1c1c; padding: 18px; border-radius: 12px; border: 1px solid #333; margin-bottom: 20px;">
-                <h4 style="margin-top: 0; color: white; font-size: 0.95rem;">שער ברירת מחדל (עבור הפקדות ללא שער רשום)</h4>
+                <h4 style="margin-top: 0; color: white; font-size: 0.95rem;">Default FX Rate (for deposits without a recorded rate)</h4>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <input type="number" id="defaultFxRateInput" step="0.0001" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 180px; font-size: 1rem; box-sizing: border-box;">
-                    <button onclick="saveDefaultFxRate()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 שמור שער</button>
-                    <span id="defaultFxRateStatus" style="font-size: 0.85rem; margin-right: 10px;"></span>
+                    <button onclick="saveDefaultFxRate()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 Save Rate</button>
+                    <span id="defaultFxRateStatus" style="font-size: 0.85rem; margin-left: 10px;"></span>
                 </div>
 
-                <h4 style="margin-top: 18px; color: white; font-size: 0.95rem;">עמלת הפקדה/המרה - ברירת מחדל (בדולר, עבור הפקדות שקליות חדשות)</h4>
+                <h4 style="margin-top: 18px; color: white; font-size: 0.95rem;">Default Deposit/Conversion Fee (USD, for new ILS deposits)</h4>
                 <div style="display: flex; gap: 10px; align-items: center;">
                     <input type="number" id="defaultDepositFeeInput" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 180px; font-size: 1rem; box-sizing: border-box;">
-                    <button onclick="saveDefaultDepositFee()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 שמור עמלה</button>
-                    <span id="defaultDepositFeeStatus" style="font-size: 0.85rem; margin-right: 10px;"></span>
+                    <button onclick="saveDefaultDepositFee()" class="btn btn-secondary" style="border-color: #4d94ff; color: #4d94ff;">💾 Save Fee</button>
+                    <span id="defaultDepositFeeStatus" style="font-size: 0.85rem; margin-left: 10px;"></span>
                 </div>
-                <div style="color:#777; font-size:0.75rem; margin-top: 8px;">שער הדולר לכל הפקדה נמשך אוטומטית מתאריך ההפקדה (או שער ברירת המחדל אם אין שער היסטורי). ניתן לעדכן את עמלת ההפקדה בכל זמן, וכל ההפקדות הקיימות/ההיסטוריה יסונכרנו בהתאם.</div>
+                <div style="color:#777; font-size:0.75rem; margin-top: 8px;">The USD rate for each deposit is fetched automatically from the deposit date (or the default rate if no historical rate exists). You can update the deposit fee at any time, and all existing deposits/history will be synced accordingly.</div>
             </div>
 
             <!-- Deposits Table -->
@@ -1571,18 +1578,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
                     <thead>
                         <tr style="border-bottom: 1px solid #262626; background: #1a1a1a; position: sticky; top: 0;">
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">תאריך</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">תיאור</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">מטבע</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">סכום</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">שער המרה</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">עמלת המרה</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">נטו (USD)</th>
-                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">פעולה</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: left;">Date</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: left;">Description</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">Currency</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">Amount</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">FX Rate</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">Conversion Fee</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: right;">Net (USD)</th>
+                            <th style="padding: 10px; color: var(--text-dim); text-align: center;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="depositsTableBody">
-                        <tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">טוען...</td></tr>
+                        <tr><td colspan="8" style="text-align:center; padding: 15px; color: #aaa;">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1590,45 +1597,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div id="depositsManagementStatus" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 0.9rem;"></div>
 
             <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px;">
-                <button onclick="closeFxManagementModal()" class="btn btn-secondary">סגור</button>
+                <button onclick="closeFxManagementModal()" class="btn btn-secondary">Close</button>
             </div>
         </div>
     </div>
 
     <!-- Edit Deposit Modal -->
     <div id="editDepositModal" style="display: none; position: fixed; z-index: 1200; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center;">
-        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
-            <span onclick="closeEditDepositModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
-            <h2 style="margin-top: 0; color: #4d94ff;">✏️ עריכת הפקדה</h2>
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <span onclick="closeEditDepositModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #4d94ff;">✏️ Edit Deposit</h2>
             <input type="hidden" id="editDepositId">
 
             <div style="margin-bottom: 15px; margin-top: 20px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">תאריך:</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Date:</label>
                 <input type="date" id="editDepositDate" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 15px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סכום (<span id="editDepositCurrencyLabel">USD</span>):</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Amount (<span id="editDepositCurrencyLabel">USD</span>):</label>
                 <input type="number" id="editDepositAmount" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 15px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">שער המרה (השאר ריק לשימוש בברירת מחדל):</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">FX Rate (leave empty to use the default):</label>
                 <input type="number" id="editDepositFxRate" step="0.0001" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div id="editDepositFeeRow" style="margin-bottom: 15px; display: none;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">עמלת המרה (בדולר):</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Conversion Fee (USD):</label>
                 <input type="number" id="editDepositFee" step="0.01" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div id="editDepositError" style="display: none; color: #ff5252; font-size: 0.85rem; margin-bottom: 10px;"></div>
 
             <div style="display: flex; justify-content: space-between; margin-top: 20px; gap: 10px;">
-                <button onclick="deleteDepositFromModal()" class="btn btn-secondary" style="border-color: #ff5252; color: #ff5252;">🗑️ מחק</button>
+                <button onclick="deleteDepositFromModal()" class="btn btn-secondary" style="border-color: #ff5252; color: #ff5252;">🗑️ Delete</button>
                 <div style="display: flex; gap: 10px;">
-                    <button id="editDepositSubmitBtn" onclick="submitEditDeposit()" class="btn btn-primary" style="background: #4d94ff; color: white; border: none;">שמור שינויים</button>
-                    <button onclick="closeEditDepositModal()" class="btn btn-secondary">ביטול</button>
+                    <button id="editDepositSubmitBtn" onclick="submitEditDeposit()" class="btn btn-primary" style="background: #4d94ff; color: white; border: none;">Save Changes</button>
+                    <button onclick="closeEditDepositModal()" class="btn btn-secondary">Cancel</button>
                 </div>
             </div>
         </div>
@@ -1636,50 +1643,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
     <!-- Add Manual Deposit Modal -->
     <div id="addDepositModal" style="display: none; position: fixed; z-index: 1250; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); align-items: center; justify-content: center;">
-        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 460px; border-radius: 16px; position: relative; direction: rtl; text-align: right;">
-            <span onclick="closeAddDepositModal()" style="position: absolute; left: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
-            <h2 style="margin-top: 0; color: #39FF14;">➕ הפקדה חדשה</h2>
-            <p style="color: #a0a0a0; font-size: 0.85rem;">הוספת הפקדה ללא הרצת סריקה שבועית. הכסף יתווסף מיידית ל-Cash Available.</p>
+        <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 460px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
+            <span onclick="closeAddDepositModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+            <h2 style="margin-top: 0; color: #39FF14;">➕ New Deposit</h2>
+            <p style="color: #a0a0a0; font-size: 0.85rem;">Add a deposit without running the weekly scan. The money is added to Cash Available immediately.</p>
 
             <div style="margin-bottom: 15px; margin-top: 20px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">תאריך:</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Date:</label>
                 <input type="date" id="addDepositDate" onchange="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 15px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סוג הפקדה:</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Deposit Type:</label>
                 <div style="display: flex; gap: 15px;">
                     <label style="display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 0.9rem; cursor: pointer;">
-                        <input type="radio" name="addDepositCurrency" value="ILS" checked onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> שקלים (₪)
+                        <input type="radio" name="addDepositCurrency" value="ILS" checked onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> ILS (₪)
                     </label>
                     <label style="display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 0.9rem; cursor: pointer;">
-                        <input type="radio" name="addDepositCurrency" value="USD" onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> דולר ($)
+                        <input type="radio" name="addDepositCurrency" value="USD" onchange="toggleAddDepositCurrencyFields()" style="width: auto; margin: 0;"> USD ($)
                     </label>
                 </div>
             </div>
 
             <div style="margin-bottom: 15px;">
-                <label id="addDepositAmountLabel" style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">סכום (₪):</label>
+                <label id="addDepositAmountLabel" style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Amount (₪):</label>
                 <input type="number" id="addDepositAmount" step="0.01" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div style="margin-bottom: 15px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">שער המרה (ריק = שליפה אוטומטית לפי התאריך):</label>
-                <input type="number" id="addDepositFxRate" step="0.0001" placeholder="אוטומטי" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">FX Rate (empty = fetched automatically by date):</label>
+                <input type="number" id="addDepositFxRate" step="0.0001" placeholder="Automatic" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
             <div id="addDepositFeeRow" style="margin-bottom: 15px;">
-                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">עמלת המרה (בדולר):</label>
+                <label style="display: block; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px;">Conversion Fee (USD):</label>
                 <input type="number" id="addDepositFee" step="0.01" oninput="updateAddDepositPreview()" style="background: #0a0a0a; border: 1px solid #333; color: white; padding: 10px; border-radius: 8px; width: 100%; font-size: 1rem; box-sizing: border-box;">
             </div>
 
-            <div id="addDepositPreview" style="background: #1c1c1c; border: 1px solid #333; border-radius: 8px; padding: 12px; color: #39FF14; font-weight: 600; font-size: 0.9rem; margin-bottom: 15px;">נטו לתיק: --</div>
+            <div id="addDepositPreview" style="background: #1c1c1c; border: 1px solid #333; border-radius: 8px; padding: 12px; color: #39FF14; font-weight: 600; font-size: 0.9rem; margin-bottom: 15px;">Net to portfolio: --</div>
 
             <div id="addDepositError" style="display: none; color: #ff5252; font-size: 0.85rem; margin-bottom: 10px;"></div>
 
             <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 10px;">
-                <button id="addDepositSubmitBtn" onclick="submitAddDeposit()" class="btn btn-primary" style="background: #39FF14; color: #0a0a0a; border: none; font-weight: bold;">הוסף הפקדה</button>
-                <button onclick="closeAddDepositModal()" class="btn btn-secondary">ביטול</button>
+                <button id="addDepositSubmitBtn" onclick="submitAddDeposit()" class="btn btn-primary" style="background: #39FF14; color: #0a0a0a; border: none; font-weight: bold;">Add Deposit</button>
+                <button onclick="closeAddDepositModal()" class="btn btn-secondary">Cancel</button>
             </div>
         </div>
     </div>
@@ -1690,7 +1697,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div style="background-color: #141414; margin: auto; padding: 30px; border: 1px solid #262626; width: 90%; max-width: 450px; border-radius: 16px; position: relative; direction: ltr; text-align: left;">
             <span onclick="closeCloseTradeModal()" style="position: absolute; right: 20px; top: 15px; color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
             <h2 style="margin-top: 0; color: #ff5252;">Close Position: <span id="closeTradeTicker"></span></h2>
-            <p style="color: #a0a0a0; font-size: 0.85rem;">סגירה ידנית של פוזיציה פעילה. שימוש למקרי קצה בלבד (תיקון טעויות, סנכרון עם הברוקר).</p>
+            <p style="color: #a0a0a0; font-size: 0.85rem;">Manually close an active position. For edge cases only (fixing mistakes, syncing with the broker).</p>
             <input type="hidden" id="closeTradeTickerHidden">
 
             <div style="margin-bottom: 15px; margin-top: 20px;">
@@ -1854,6 +1861,15 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
             price_cell = "N/A"
             distance_cell = "N/A"
 
+        sessions_waiting = t.get('sessions_waiting', 0)
+        # Highlight orders that have been waiting a while - the signal ages
+        if sessions_waiting >= 5:
+            waiting_color, waiting_hint = "#ff5252", " ⚠️"
+        elif sessions_waiting >= 3:
+            waiting_color, waiting_hint = "#ffb74d", ""
+        else:
+            waiting_color, waiting_hint = "var(--text-dim)", ""
+
         pending_rows += f"""<tr>
             <td><div class="led-dot led-orange"></div></td>
             <td><strong>{t['ticker']}</strong></td>
@@ -1861,10 +1877,11 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
             <td>{price_cell}</td>
             <td style="color: {distance_color}; font-weight: bold;">{distance_cell}</td>
             <td>{t.get('entry_session_date', 'N/A')}</td>
+            <td style="color: {waiting_color}; font-weight: bold;">{sessions_waiting}{waiting_hint}</td>
             <td>${t.get('reserved_capital', 0):,.2f}</td>
             <td style="white-space: nowrap;">
-                <button onclick="fillPendingOrder('{t['ticker']}', {target})" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; border-color: #39FF14; color: #39FF14;">מולא</button>
-                <button onclick="cancelPendingOrder('{t['ticker']}')" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; border-color: #ff5252; color: #ff5252;">בטל</button>
+                <button onclick="fillPendingOrder('{t['ticker']}', {target})" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; border-color: #39FF14; color: #39FF14;">Manually Filled</button>
+                <button onclick="cancelPendingOrder('{t['ticker']}')" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; background: rgba(255,82,82,0.15); border-color: #ff5252; color: #ff5252; font-weight: bold;">✕ Cancel Order</button>
             </td>
         </tr>"""
 
@@ -1878,7 +1895,7 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
                 <td style="color: #ffb74d;">NOT_FILLED</td>
                 <td>${t.get('target_entry', 0):.2f} (target)</td>
                 <td>-</td>
-                <td style="color: var(--text-dim); font-size: 0.75rem;">{t.get('entry_fill_note', 'לא בוצעה קנייה')}</td>
+                <td style="color: var(--text-dim); font-size: 0.75rem;">{t.get('entry_fill_note', 'No purchase was made')}</td>
             </tr>"""
             continue
 
@@ -1971,7 +1988,7 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
         "{{conversion_count}}": str(conversion_count),
         "{{avg_conversion_fee}}": f"{avg_conversion_fee:.2f}",
         "{{active_rows}}": active_rows if active_rows else '<tr><td colspan="9" style="text-align:center;">No active trades</td></tr>',
-        "{{pending_rows}}": pending_rows if pending_rows else '<tr><td colspan="8" style="text-align:center; color:#777;">אין הוראות ממתינות</td></tr>',
+        "{{pending_rows}}": pending_rows if pending_rows else '<tr><td colspan="9" style="text-align:center; color:#777;">No pending orders</td></tr>',
         "{{history_rows}}": history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>',
         "{{charts_json}}": charts_json,
         "{{clearance_button}}": "",

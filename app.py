@@ -51,22 +51,22 @@ DEPOSIT_FORM_HTML = """
             </div>
 
             <div class="deposit-section">
-                <label>תאריך ההפקדה:</label>
+                <label>Deposit Date:</label>
                 <input type="date" name="deposit_date" id="deposit_date" value="{{ today }}">
 
-                <label style="margin-top: 10px;">סוג הפקדה:</label>
+                <label style="margin-top: 10px;">Deposit Type:</label>
                 <div class="currency-toggle">
-                    <label><input type="radio" name="deposit_currency" value="ILS" checked onchange="toggleDepositFields()"> הפקדה בשקלים (עם המרה)</label>
-                    <label><input type="radio" name="deposit_currency" value="USD" onchange="toggleDepositFields()"> הפקדה ישירה בדולר</label>
+                    <label><input type="radio" name="deposit_currency" value="ILS" checked onchange="toggleDepositFields()"> ILS deposit (with conversion)</label>
+                    <label><input type="radio" name="deposit_currency" value="USD" onchange="toggleDepositFields()"> Direct USD deposit</label>
                 </div>
 
-                <label id="amount-label">סכום ההפקדה (₪):</label>
+                <label id="amount-label">Deposit Amount (₪):</label>
                 <input type="number" name="deposit" step="0.01" value="0" autofocus>
 
                 <div id="ils-fields">
-                    <label>עמלת המרה (בדולר):</label>
+                    <label>Conversion Fee (USD):</label>
                     <input type="number" name="conversion_fee" id="conversion_fee" step="0.01" value="{{ default_deposit_fee }}">
-                    <div style="color:#777; font-size:0.75rem; margin-top:-6px;">שער הדולר לתאריך שנבחר יימשך אוטומטית.</div>
+                    <div style="color:#777; font-size:0.75rem; margin-top:-6px;">The USD rate for the selected date is fetched automatically.</div>
                 </div>
             </div>
             <button type="submit" class="btn">Confirm & Run Scan</button>
@@ -77,7 +77,7 @@ DEPOSIT_FORM_HTML = """
         function toggleDepositFields() {
             const isIls = document.querySelector('input[name="deposit_currency"]:checked').value === 'ILS';
             document.getElementById('ils-fields').style.display = isIls ? 'block' : 'none';
-            document.getElementById('amount-label').innerText = isIls ? 'סכום ההפקדה (₪):' : 'סכום ההפקדה ($):';
+            document.getElementById('amount-label').innerText = isIls ? 'Deposit Amount (₪):' : 'Deposit Amount ($):';
         }
         toggleDepositFields();
     </script>
@@ -353,12 +353,12 @@ def api_close_trade():
     exit_timestamp = data.get('exit_timestamp')  # Optional, defaults to now()
 
     if not ticker or exit_price is None:
-        return jsonify({"success": False, "message": "חסר ticker או exit_price"}), 400
+        return jsonify({"success": False, "message": "Missing ticker or exit_price"}), 400
 
     try:
         exit_price = float(exit_price)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "exit_price לא תקין"}), 400
+        return jsonify({"success": False, "message": "Invalid exit_price"}), 400
 
     trades = data_manager.load_trades()
     trades, success, message = trading_logic.close_trade_manually(trades, ticker, exit_price, exit_timestamp)
@@ -394,7 +394,7 @@ def api_check_pending():
 
     return jsonify({
         "success": True,
-        "message": f"נבדקו ההוראות הממתינות. נותרו {still_pending} הוראות פתוחות.",
+        "message": f"Pending orders checked. {still_pending} orders are still open.",
         "pending_count": still_pending
     })
 
@@ -413,9 +413,9 @@ def api_fill_pending():
     fill_timestamp = data.get('fill_timestamp')
 
     if not ticker:
-        return jsonify({"success": False, "message": "חסר ticker."}), 400
+        return jsonify({"success": False, "message": "Missing ticker."}), 400
     if fill_price is None:
-        return jsonify({"success": False, "message": "חסר fill_price."}), 400
+        return jsonify({"success": False, "message": "Missing fill_price."}), 400
 
     trades = data_manager.load_trades()
     trades, success, message = trading_logic.fill_pending_manually(
@@ -448,7 +448,7 @@ def api_cancel_pending():
     reason = data.get('reason')
 
     if not ticker:
-        return jsonify({"success": False, "message": "חסר ticker."}), 400
+        return jsonify({"success": False, "message": "Missing ticker."}), 400
 
     trades = data_manager.load_trades()
     trades, success, message = trading_logic.cancel_pending_manually(trades, ticker, reason)
@@ -635,31 +635,31 @@ def api_create_deposit():
     try:
         amount = float(amount_raw)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "\u05e1\u05db\u05d5\u05dd \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+        return jsonify({"success": False, "message": "Invalid amount."}), 400
     if amount <= 0:
-        return jsonify({"success": False, "message": "\u05d4\u05e1\u05db\u05d5\u05dd \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d2\u05d3\u05d5\u05dc \u05de-0."}), 400
+        return jsonify({"success": False, "message": "The amount must be greater than 0."}), 400
 
     if currency not in ("ILS", "USD"):
-        return jsonify({"success": False, "message": "\u05de\u05d8\u05d1\u05e2 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+        return jsonify({"success": False, "message": "Invalid currency."}), 400
 
     try:
         datetime.strptime(date_str, "%Y-%m-%d")
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "\u05e4\u05d5\u05e8\u05de\u05d8 \u05ea\u05d0\u05e8\u05d9\u05da \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df (YYYY-MM-DD)."}), 400
+        return jsonify({"success": False, "message": "Invalid date format (YYYY-MM-DD)."}), 400
 
     fx_rate = None
     if fx_rate_raw not in (None, ''):
         try:
             fx_rate = float(fx_rate_raw)
         except (TypeError, ValueError):
-            return jsonify({"success": False, "message": "\u05e9\u05e2\u05e8 \u05d4\u05de\u05e8\u05d4 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05df."}), 400
+            return jsonify({"success": False, "message": "Invalid conversion rate."}), 400
 
     conversion_fee = None
     if currency == 'ILS' and conversion_fee_raw not in (None, ''):
         try:
             conversion_fee = float(conversion_fee_raw)
         except (TypeError, ValueError):
-            return jsonify({"success": False, "message": "\u05e2\u05de\u05dc\u05ea \u05d4\u05de\u05e8\u05d4 \u05dc\u05d0 \u05ea\u05e7\u05d9\u05e0\u05d4."}), 400
+            return jsonify({"success": False, "message": "Invalid conversion fee."}), 400
 
     deposit = currency_manager.add_deposit(
         amount=amount,
@@ -678,7 +678,7 @@ def api_create_deposit():
     except Exception as e:
         print(f"Warning: could not regenerate dashboard after manual deposit: {e}")
 
-    return jsonify({"success": True, "message": "\u05d4\u05d4\u05e4\u05e7\u05d3\u05d4 \u05e0\u05d5\u05e1\u05e4\u05d4 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4.", "deposit": deposit})
+    return jsonify({"success": True, "message": "Deposit added successfully.", "deposit": deposit})
 
 
 @app.route('/api/deposits/<int:deposit_id>', methods=['POST'])
@@ -730,12 +730,12 @@ def api_update_default_fx_rate():
     new_rate = data.get('rate')
 
     if new_rate is None:
-        return jsonify({"success": False, "message": "חסר rate."}), 400
+        return jsonify({"success": False, "message": "Missing rate."}), 400
 
     try:
         updated_rate = currency_manager.update_default_fx_rate(new_rate)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "rate לא תקין."}), 400
+        return jsonify({"success": False, "message": "Invalid rate."}), 400
 
     try:
         trades = data_manager.load_trades()
@@ -743,7 +743,7 @@ def api_update_default_fx_rate():
     except Exception as e:
         print(f"Warning: could not regenerate dashboard after default fx rate update: {e}")
 
-    return jsonify({"success": True, "message": "שער ברירת המחדל עודכן בהצלחה.", "default_fx_rate": updated_rate})
+    return jsonify({"success": True, "message": "Default FX rate updated successfully.", "default_fx_rate": updated_rate})
 
 
 @app.route('/api/default-deposit-fee', methods=['POST'])
@@ -755,14 +755,14 @@ def api_update_default_deposit_fee():
     new_fee = data.get('fee')
 
     if new_fee is None:
-        return jsonify({"success": False, "message": "חסר fee."}), 400
+        return jsonify({"success": False, "message": "Missing fee."}), 400
 
     try:
         updated_fee = currency_manager.update_default_deposit_fee(new_fee)
     except (TypeError, ValueError):
-        return jsonify({"success": False, "message": "fee לא תקין."}), 400
+        return jsonify({"success": False, "message": "Invalid fee."}), 400
 
-    return jsonify({"success": True, "message": "עמלת ברירת המחדל עודכנה בהצלחה.", "default_deposit_fee_usd": updated_fee})
+    return jsonify({"success": True, "message": "Default fee updated successfully.", "default_deposit_fee_usd": updated_fee})
 
 
 
@@ -793,16 +793,16 @@ def api_import_data():
     safety net) so the user can continue on a different computer.
     """
     if 'backup_file' not in request.files:
-        return jsonify({"success": False, "message": "לא נבחר קובץ."}), 400
+        return jsonify({"success": False, "message": "No file selected."}), 400
 
     file = request.files['backup_file']
     if not file or file.filename == '':
-        return jsonify({"success": False, "message": "לא נבחר קובץ."}), 400
+        return jsonify({"success": False, "message": "No file selected."}), 400
 
     try:
         backup_data = json.load(file.stream)
     except Exception as e:
-        return jsonify({"success": False, "message": f"קובץ JSON לא תקין: {e}"}), 400
+        return jsonify({"success": False, "message": f"Invalid JSON file: {e}"}), 400
 
     success, message = data_manager.import_user_data(backup_data)
 
