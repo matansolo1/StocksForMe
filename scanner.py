@@ -16,7 +16,7 @@ UNIVERSE = [
     'MELI', 'SE', 'SHOP', 'SQ', 'PYPL', 'V', 'MA', 'COIN', 'HOOD', 'DIS',
     'SBUX', 'NKE', 'LULU', 'UBER', 'LYFT', 'ABNB', 'DASH', 'ROKU', 'TDOC', 'ZM',
     'DOCU', 'TTD', 'FSLR', 'ENPH', 'SEDG', 'ALB', 'SQM', 'TSMC', 'ARM',
-    'SMCI', 'PANW', 'GE', 'CAT', 'CRM', 'ORCL', 'IBM', 'LRCX', 'ETN', 'PH',
+    'SMCI',  'GE', 'CAT', 'CRM', 'ORCL', 'IBM', 'LRCX', 'ETN', 'PH',
     'MSTR', 'MARA', 'RIOT', 'DKNG', 'PINS', 'SNAP', 'AFRM', 'PLTR', 'LCID', 'RIVN',
     'XPEV', 'LI', 'NIO', 'FCX', 'NUE', 'CLF', 'AA', 'X', 'SOFI', 'UPST'
 ]
@@ -262,8 +262,9 @@ def main():
     total_deposits = metadata.get("total_deposits", 0)
     commission_per_trade = metadata.get("commission_per_trade", 2.5)
     
-    active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
-    invested_capital = sum(t.get('quantity', 0) * t.get('entry_price', 0) for t in trades if t.get('status') == 'ACTIVE')
+    # Open positions AND live pending limit orders both occupy a slot and tie up cash
+    active_count = len([t for t in trades if trading_logic.holds_slot(t)])
+    invested_capital = sum(trading_logic.get_reserved_capital(t) for t in trades if trading_logic.holds_slot(t))
     cash_available = total_deposits - invested_capital
 
     if total_deposits <= 0 or cash_available <= 0:
@@ -276,7 +277,7 @@ def main():
     # Only add new trades to fill empty slots (matches backtester logic).
     # cash_available is passed so add_new_trades can split cash based on the
     # ACTUAL number of setups found (e.g. 1 setup in an empty portfolio -> 50%).
-    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade, cash_available=cash_available)
+    trades, added = trading_logic.add_new_trades(trades, top_setups, position_size_usd=pos_size, commission_per_trade=commission_per_trade, cash_available=cash_available, stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct)
     data_manager.save_trades(trades)
 
     

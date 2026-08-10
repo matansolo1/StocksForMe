@@ -209,6 +209,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <thead><tr><th>Status</th><th>Ticker</th><th>Phase</th><th>Weight</th><th>Entry</th><th>Price</th><th>Value</th><th>P&L</th><th>Action</th></tr></thead>
                 <tbody>{{active_rows}}</tbody>
             </table>
+
+            <div style="margin-top: 25px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <h3 style="margin: 0;">⏳ Pending Entries (הוראות לימיט ממתינות)</h3>
+                    <button onclick="checkPendingNow()" class="btn btn-secondary" style="padding: 5px 12px; font-size: 0.75rem; border-color: #ffb74d; color: #ffb74d;">בדוק עכשיו</button>
+                </div>
+                <div style="color: var(--text-dim); font-size: 0.78rem; margin: 6px 0 10px;">
+                    הוראות אלו טרם בוצעו. הן ייכנסו כפוזיציה רק אם המחיר ייגע במחיר היעד במהלך יום המסחר - אחרת יסומנו כ-NOT_FILLED (בדיוק כמו אצל הברוקר).
+                </div>
+                <table>
+                    <thead><tr><th>Status</th><th>Ticker</th><th>מחיר יעד</th><th>מחיר נוכחי</th><th>מרחק</th><th>יום מסחר</th><th>הון משוריין</th><th>Action</th></tr></thead>
+                    <tbody>{{pending_rows}}</tbody>
+                </table>
+            </div>
         </div>
         <div class="chart-section">
             <!-- New Metrics Dashboard -->
@@ -764,6 +778,56 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 dryRunEventSource = null;
             }
             document.getElementById('dryRunModal').style.display = 'none';
+        };
+
+        // Pending Entry (limit order) Management
+        window.checkPendingNow = async function() {
+            try {
+                const response = await fetch('/api/check-pending', { method: 'POST' });
+                const data = await response.json();
+                alert(data.message || 'הבדיקה הושלמה.');
+                location.reload();
+            } catch (e) {
+                alert('שגיאת רשת: ' + e);
+            }
+        };
+
+        window.fillPendingOrder = async function(ticker, targetPrice) {
+            const input = prompt(`באיזה מחיר נקנתה ${ticker} בפועל?`, targetPrice);
+            if (input === null) return;
+            const fillPrice = parseFloat(input);
+            if (isNaN(fillPrice) || fillPrice <= 0) {
+                alert('יש להזין מחיר תקין.');
+                return;
+            }
+            try {
+                const response = await fetch('/api/fill-pending', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker, fill_price: fillPrice })
+                });
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) location.reload();
+            } catch (e) {
+                alert('שגיאת רשת: ' + e);
+            }
+        };
+
+        window.cancelPendingOrder = async function(ticker) {
+            if (!confirm(`לבטל את ההוראה עבור ${ticker}? הפוזיציה תסומן כ-NOT_FILLED וההון ישוחרר.`)) return;
+            try {
+                const response = await fetch('/api/cancel-pending', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker: ticker, reason: 'בוטלה ידנית מהדשבורד' })
+                });
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) location.reload();
+            } catch (e) {
+                alert('שגיאת רשת: ' + e);
+            }
         };
 
         // Manual Close Trade Logic
@@ -1672,8 +1736,14 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     """
     Generates the final HTML dashboard.
     """
-    active_trades = [t for t in trades if t.get("status") == "ACTIVE"]
-    historical_trades = [t for t in trades if t.get("status") != "ACTIVE"]
+    import trading_logic
+
+    active_trades = [t for t in trades if trading_logic.is_open_position(t)]
+    pending_trades = [t for t in trades if trading_logic.is_pending_entry(t)]
+    # History shows executed-and-closed trades plus expired (never bought)
+    # orders, so the user can see which signals were missed and why.
+    historical_trades = [t for t in trades
+                         if trading_logic.is_closed_trade(t) or trading_logic.is_not_filled(t)]
 
     # Use analytics_generator to calculate portfolio state
     import analytics_generator
@@ -1717,7 +1787,8 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
     # (active_positions must be passed in, otherwise this always divides by
     # the full max_positions=3 regardless of how many slots are actually free)
     MAX_POSITIONS = 3
-    active_position_count = len(active_trades)
+    # Pending limit orders hold a slot too (they are live orders at the broker)
+    active_position_count = len(active_trades) + len(pending_trades)
     slots_free = max(0, MAX_POSITIONS - active_position_count)
     next_position_size = analytics_generator.calculate_position_size(
         portfolio_state, max_positions=MAX_POSITIONS, active_positions=active_position_count
@@ -1766,8 +1837,51 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
             <td><button onclick="event.stopPropagation(); openCloseTradeModal('{t['ticker']}', {t.get('current_price', 0)})" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; border-color: #ff5252; color: #ff5252;">Close</button></td>
         </tr>"""
 
+    # Pending limit orders - not positions yet, so no P&L is shown. Instead we
+    # show how far the current price is from the target the order is waiting for.
+    pending_rows = ""
+    for t in pending_trades:
+        target = t.get('target_entry', t.get('entry_price', 0)) or 0
+        live_price, _ = stock_api.get_last_price(t['ticker'])
+        if live_price:
+            distance_pct = ((live_price - target) / target * 100) if target else 0
+            # Price must come DOWN to the target for a buy limit to fill
+            distance_color = "#39FF14" if distance_pct <= 0 else "#ffb74d"
+            price_cell = f"${live_price:,.2f}"
+            distance_cell = f"{distance_pct:+.2f}%"
+        else:
+            distance_color = "var(--text-dim)"
+            price_cell = "N/A"
+            distance_cell = "N/A"
+
+        pending_rows += f"""<tr>
+            <td><div class="led-dot led-orange"></div></td>
+            <td><strong>{t['ticker']}</strong></td>
+            <td>${target:,.2f}</td>
+            <td>{price_cell}</td>
+            <td style="color: {distance_color}; font-weight: bold;">{distance_cell}</td>
+            <td>{t.get('entry_session_date', 'N/A')}</td>
+            <td>${t.get('reserved_capital', 0):,.2f}</td>
+            <td style="white-space: nowrap;">
+                <button onclick="fillPendingOrder('{t['ticker']}', {target})" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; border-color: #39FF14; color: #39FF14;">מולא</button>
+                <button onclick="cancelPendingOrder('{t['ticker']}')" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; border-color: #ff5252; color: #ff5252;">בטל</button>
+            </td>
+        </tr>"""
+
     history_rows = ""
     for t in reversed(historical_trades):
+        if trading_logic.is_not_filled(t):
+            # Never executed: no entry, no exit, no P&L. Show why it was missed.
+            history_rows += f"""<tr style="opacity: 0.75;">
+                <td>{t.get('expired_timestamp', t.get('timestamp', 'N/A'))}</td>
+                <td><strong>{t.get('ticker', 'N/A')}</strong></td>
+                <td style="color: #ffb74d;">NOT_FILLED</td>
+                <td>${t.get('target_entry', 0):.2f} (target)</td>
+                <td>-</td>
+                <td style="color: var(--text-dim); font-size: 0.75rem;">{t.get('entry_fill_note', 'לא בוצעה קנייה')}</td>
+            </tr>"""
+            continue
+
         pnl = finance_utils.calculate_pnl_pct(t.get('exit_price', t['entry_price']), t['entry_price'])
         color = "#39FF14" if pnl >= 0 else "#ff5252"
         history_rows += f"""<tr>
@@ -1857,6 +1971,7 @@ def generate_dashboard_file(trades, output_file="output/tracker_dashboard.html")
         "{{conversion_count}}": str(conversion_count),
         "{{avg_conversion_fee}}": f"{avg_conversion_fee:.2f}",
         "{{active_rows}}": active_rows if active_rows else '<tr><td colspan="9" style="text-align:center;">No active trades</td></tr>',
+        "{{pending_rows}}": pending_rows if pending_rows else '<tr><td colspan="8" style="text-align:center; color:#777;">אין הוראות ממתינות</td></tr>',
         "{{history_rows}}": history_rows if history_rows else '<tr><td colspan="6" style="text-align:center;">No history available</td></tr>',
         "{{charts_json}}": charts_json,
         "{{clearance_button}}": "",

@@ -289,8 +289,9 @@ def scan_stream():
         # Calculate portfolio state using analytics_generator
         portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
         
-        # Calculate a preliminary position size estimate (used only to check if any cash exists)
-        active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
+        # Calculate a preliminary position size estimate (used only to check if any cash exists).
+        # Pending limit orders occupy a slot too - they are live orders at the broker.
+        active_count = len([t for t in trades if trading_logic.holds_slot(t)])
         pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3, active_positions=active_count)
         
         if pos_size <= 0:
@@ -313,9 +314,12 @@ def scan_stream():
         yield f"data: {json.dumps({'progress': 100, 'message': 'Adding new trades (filling empty slots)...'})}\n\n"
         
         cash_available = portfolio_state['cash_available']
+        # stop_loss_pct / take_profit_pct are stored on each pending order so
+        # SL/TP can be recalculated from the ACTUAL fill price later.
         trades, added = trading_logic.add_new_trades(
             trades, top_setups, position_size_usd=pos_size,
-            commission_per_trade=commission_per_trade, cash_available=cash_available
+            commission_per_trade=commission_per_trade, cash_available=cash_available,
+            stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct
         )
         data_manager.save_trades(trades)
 
@@ -370,6 +374,97 @@ def api_close_trade():
     return jsonify({"success": success, "message": message})
 
 
+@app.route('/api/check-pending', methods=['POST'])
+def api_check_pending():
+    """
+    Forces an immediate evaluation of all PENDING_ENTRY limit orders, instead
+    of waiting for the next 15-minute auto-refresh cycle. Fills the orders
+    whose limit price was actually touched during their entry session, and
+    expires the ones whose session ended without a fill.
+    """
+    import trading_logic
+
+    trades = data_manager.load_trades()
+    trades = trading_logic.check_pending_entries(trades)
+    data_manager.save_trades(trades)
+    data_manager.update_portfolio_state(trades)
+
+    still_pending = len([t for t in trades if trading_logic.is_pending_entry(t)])
+    ui_generator.generate_dashboard_file(trades)
+
+    return jsonify({
+        "success": True,
+        "message": f"נבדקו ההוראות הממתינות. נותרו {still_pending} הוראות פתוחות.",
+        "pending_count": still_pending
+    })
+
+
+@app.route('/api/fill-pending', methods=['POST'])
+def api_fill_pending():
+    """
+    Manually marks a PENDING_ENTRY order as filled (broker sync).
+    Expects JSON: { ticker, fill_price, fill_timestamp (optional) }
+    """
+    import trading_logic
+
+    data = request.get_json() or {}
+    ticker = data.get('ticker')
+    fill_price = data.get('fill_price')
+    fill_timestamp = data.get('fill_timestamp')
+
+    if not ticker:
+        return jsonify({"success": False, "message": "חסר ticker."}), 400
+    if fill_price is None:
+        return jsonify({"success": False, "message": "חסר fill_price."}), 400
+
+    trades = data_manager.load_trades()
+    trades, success, message = trading_logic.fill_pending_manually(
+        trades, ticker, fill_price, fill_timestamp
+    )
+
+    if success:
+        data_manager.save_trades(trades)
+        data_manager.update_portfolio_state(trades)
+        try:
+            ui_generator.generate_dashboard_file(trades)
+        except Exception as e:
+            print(f"Warning: could not regenerate dashboard after manual fill: {e}")
+        return jsonify({"success": True, "message": message})
+
+    return jsonify({"success": False, "message": message}), 400
+
+
+@app.route('/api/cancel-pending', methods=['POST'])
+def api_cancel_pending():
+    """
+    Manually cancels a PENDING_ENTRY order - the position was never opened.
+    Frees the slot and the reserved cash.
+    Expects JSON: { ticker, reason (optional) }
+    """
+    import trading_logic
+
+    data = request.get_json() or {}
+    ticker = data.get('ticker')
+    reason = data.get('reason')
+
+    if not ticker:
+        return jsonify({"success": False, "message": "חסר ticker."}), 400
+
+    trades = data_manager.load_trades()
+    trades, success, message = trading_logic.cancel_pending_manually(trades, ticker, reason)
+
+    if success:
+        data_manager.save_trades(trades)
+        data_manager.update_portfolio_state(trades)
+        try:
+            ui_generator.generate_dashboard_file(trades)
+        except Exception as e:
+            print(f"Warning: could not regenerate dashboard after cancel: {e}")
+        return jsonify({"success": True, "message": message})
+
+    return jsonify({"success": False, "message": message}), 400
+
+
 @app.route('/refresh-tracker')
 def refresh_tracker():
     subprocess.run(["python", "tracker.py"], env={**os.environ, "FLASK_TRIGGERED": "true"})
@@ -389,9 +484,10 @@ def dry_run_stream():
     take_profit_pct = float(request.args.get('take_profit_pct', 10.0))
     
     def generate():
-        # Load current active positions to determine how many slots are available
+        # Load current occupied slots (open positions + live pending orders)
+        import trading_logic
         trades = data_manager.load_trades()
-        active_count = len([t for t in trades if t.get("status") == "ACTIVE"])
+        active_count = len([t for t in trades if trading_logic.holds_slot(t)])
         slots_available = max(0, 3 - active_count)  # Ensure non-negative
         
         # Send initial status message

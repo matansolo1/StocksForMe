@@ -6,6 +6,7 @@ Handles all calculations for trade analytics, portfolio state tracking, and capi
 import json
 from datetime import datetime
 import stock_api
+import trading_logic
 
 
 def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
@@ -23,12 +24,22 @@ def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
     realized_pnl = 0
     unrealized_pnl = 0
     invested_capital = 0
+    reserved_capital = 0
     total_commissions = 0
     
     for trade in trades:
         position_value = trade.get('quantity', 0) * trade.get('entry_price', 0)
         
-        if trade.get('status') == 'ACTIVE':
+        if trading_logic.is_pending_entry(trade):
+            # Pending limit order: no position exists yet, so there is NO P&L
+            # and no commission. The cash is only reserved so a later scan
+            # cannot allocate the same money twice.
+            reserved_capital += trading_logic.get_reserved_capital(trade)
+            continue
+        elif trading_logic.is_not_filled(trade):
+            # Order expired without ever executing - it never happened.
+            continue
+        elif trading_logic.is_open_position(trade):
             # Active positions - calculate unrealized P&L (subtract entry commission only)
             current_price = trade.get('current_price', trade.get('entry_price', 0))
             current_value = trade.get('quantity', 0) * current_price
@@ -47,12 +58,15 @@ def calculate_portfolio_state(trades, total_deposits, commission_per_trade=2.5):
             total_commissions += total_trade_commission
     
     current_equity = total_deposits + realized_pnl + unrealized_pnl
-    cash_available = total_deposits + realized_pnl - invested_capital
+    # Cash tied up by live-but-unfilled limit orders is not spendable either -
+    # it is earmarked for those orders until they fill or expire.
+    cash_available = total_deposits + realized_pnl - invested_capital - reserved_capital
     
     return {
         'current_equity': round(current_equity, 2),
         'cash_available': round(cash_available, 2),
         'invested_capital': round(invested_capital, 2),
+        'reserved_capital': round(reserved_capital, 2),
         'realized_pnl': round(realized_pnl, 2),
         'unrealized_pnl': round(unrealized_pnl, 2),
         'total_deposits': total_deposits,
@@ -190,7 +204,7 @@ def simulate_strategy_growth(trades, initial_capital=10000.0, max_slots=3, commi
                                   pnl_pct, pnl_usd, commission_usd}, ... ]
             }
     """
-    closed_trades = [t for t in trades if t.get('status') not in ['ACTIVE', 'REVIEW'] and t.get('exit_timestamp')]
+    closed_trades = [t for t in trades if trading_logic.is_closed_trade(t) and t.get('exit_timestamp')]
     signals = _dedupe_signals(closed_trades)
 
     cash = float(initial_capital)
@@ -332,7 +346,7 @@ def calculate_mwr_cumulative_return(trades, total_deposits):
     Returns:
         List of dictionaries with date and MWR return
     """
-    closed_trades = [t for t in trades if t.get('status') not in ['ACTIVE', 'REVIEW'] and t.get('exit_timestamp')]
+    closed_trades = [t for t in trades if trading_logic.is_closed_trade(t) and t.get('exit_timestamp')]
     closed_trades.sort(key=lambda x: x.get('exit_timestamp', ''))
     
     # Group trades by exit date
@@ -430,7 +444,7 @@ def calculate_trade_duration(trade):
     try:
         entry_time = datetime.strptime(trade.get('timestamp', ''), "%Y-%m-%d %H:%M:%S")
         
-        if trade.get('status') == 'ACTIVE':
+        if trading_logic.is_open_position(trade):
             exit_time = datetime.now()
         else:
             exit_time = datetime.strptime(trade.get('exit_timestamp', ''), "%Y-%m-%d %H:%M:%S")
@@ -451,7 +465,10 @@ def calculate_performance_metrics(trades):
     Returns:
         Dictionary with performance metrics
     """
-    closed_trades = [t for t in trades if t.get('status') != 'ACTIVE']
+    # Only executed-and-closed trades count. PENDING_ENTRY (no position yet)
+    # and NOT_FILLED (never bought) must be excluded, otherwise they would be
+    # counted as zero-P&L trades and destroy the win-rate statistics.
+    closed_trades = [t for t in trades if trading_logic.is_closed_trade(t)]
     
     if not closed_trades:
         return {
