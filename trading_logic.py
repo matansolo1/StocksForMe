@@ -590,7 +590,7 @@ def update_portfolio_status(trades):
 
 
 def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0, commission_per_trade=2.5,
-                    cash_available=None, stop_loss_pct=5.0, take_profit_pct=10.0):
+                    cash_available=None, stop_loss_pct=5.0, take_profit_pct=10.0, signal_dt=None, scan_as_of=None):
     """
     Adds new setups from the scanner as PENDING_ENTRY limit orders, if there's
     room in the portfolio. Only fills empty slots - does not close existing
@@ -605,12 +605,12 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
     were therefore never bought.
 
     Position sizing: if cash_available is provided, the position size is
-    recalculated based on the ACTUAL number of setups being added this run
-    (capped at the number of empty slots, floored at dividing by 2), instead
-    of using the flat position_size_usd for every trade. This ensures that
-    when fewer opportunities are found than there are empty slots, the
-    available cash isn't left mostly idle (e.g. 1 setup found with an empty
-    3-slot portfolio -> that setup gets 50% of cash instead of 33%).
+    split across the number of currently EMPTY slots (max_positions minus
+    open/pending trades), not just the number of setups actually found this
+    run. This deliberately reserves capital for slots that stay empty this
+    week (e.g. 2 setups found with an empty 3-slot portfolio -> each setup
+    gets 1/3 of cash, not 1/2), so a slot is always kept free for future
+    opportunities rather than fully deploying cash into fewer names.
 
     Args:
         trades: List of existing trades
@@ -623,6 +623,14 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                         from the ACTUAL fill price (default: 5.0)
         take_profit_pct: Take profit percentage, stored for the same reason
                         (default: 10.0)
+        signal_dt: optional datetime to use as the signal timestamp instead of
+                        datetime.now(). Used by the Catch-Up Scan to backdate
+                        the signal to "last Sunday evening" so the GTC limit
+                        order resolves into the correct (already-past) entry
+                        session instead of a future one.
+        scan_as_of: optional "YYYY-MM-DD" string recorded on the trade for
+                        traceability when it came from a retroactive
+                        Catch-Up Scan (None for a normal live scan).
     """
     # Both open positions AND live pending orders occupy a slot and reserve
     # cash - otherwise a second scan could allocate the same money twice.
@@ -635,12 +643,12 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
     fillable_setups = [s for s in new_setups if s['Ticker'] not in active_tickers][:max(0, slots_available)]
     num_setups = len(fillable_setups)
 
-    # Determine position size for this batch
+    # Determine position size for this batch. Always split by the number of
+    # EMPTY slots (never just the setups found), so unused slots keep their
+    # share of cash reserved for future scans instead of it being deployed
+    # into fewer names.
     if cash_available is not None and num_setups > 0 and slots_available > 0:
-        if num_setups >= slots_available:
-            divisor = slots_available
-        else:
-            divisor = max(2, num_setups)
+        divisor = max(2, slots_available)
         batch_position_size = round(cash_available / divisor, 2) if cash_available > 0 else 0.0
         weight_per_trade = round(100 / divisor, 2) if divisor > 0 else 0
     else:
@@ -654,12 +662,12 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
             
         if s['Ticker'] not in active_tickers:
             entry_price = s['Close']
-            signal_dt = datetime.now()
+            trade_signal_dt = signal_dt or datetime.now()
 
             # Resolve the FIRST trading session in which this limit order goes
             # live. Being GTC, it has no deadline - it stays active from this
             # session onwards until filled or manually cancelled.
-            session_date, _session_open, _session_close = get_entry_session(signal_dt)
+            session_date, _session_open, _session_close = get_entry_session(trade_signal_dt)
 
             trade = {
                 "ticker": s['Ticker'],
@@ -675,8 +683,8 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "risk_reward": s['RiskReward'],
                 "rsi": s['RSI_14'],
                 "status": STATUS_PENDING_ENTRY,
-                "timestamp": signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
-                "signal_timestamp": signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "timestamp": trade_signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "signal_timestamp": trade_signal_dt.strftime("%Y-%m-%d %H:%M:%S"),
                 "entry_session_date": session_date,
                 "time_in_force": "GTC",  # no expiry - cancelled manually only
                 "sessions_waiting": 0,
@@ -689,6 +697,10 @@ def add_new_trades(trades, new_setups, max_positions=3, position_size_usd=1000.0
                 "commission_exit": 0,  # Will be set when position closes
                 "total_commission": commission_per_trade  # Will be updated on exit
             }
+            if scan_as_of:
+                # Marks this trade as coming from a retroactive Catch-Up Scan,
+                # evaluated on the close of this date rather than live data.
+                trade["scan_as_of"] = scan_as_of
             trades.append(trade)
             active_trades.append(trade)
             active_tickers.append(trade['ticker'])

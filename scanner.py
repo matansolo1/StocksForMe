@@ -21,6 +21,29 @@ UNIVERSE = [
     'XPEV', 'LI', 'NIO', 'FCX', 'NUE', 'CLF', 'AA', 'X', 'SOFI', 'UPST'
 ]
 
+def get_last_completed_friday(reference=None):
+    """
+    Returns the most recently completed Friday (as of `reference`, default
+    now) in "YYYY-MM-DD" format. Used by the Catch-Up Scan to default to
+    "last week's Friday close" without the user having to type a date.
+
+    If `reference` itself is a Friday, it still returns the PREVIOUS Friday
+    (7 days back) unless explicitly overridden - the weekly cycle always
+    scans on Friday's close observed from Sunday evening onwards, so "today"
+    being a Friday during market hours does not yet have a completed close.
+    Simpler and safer: if reference is a Friday, return that same date only
+    when called with a date already known to be after the close; otherwise
+    callers pass an explicit date. For the common case (any other weekday),
+    this simply walks back to the most recent past Friday.
+    """
+    ref = reference or datetime.now()
+    days_since_friday = (ref.weekday() - 4) % 7  # Friday = weekday() 4
+    if days_since_friday == 0:
+        days_since_friday = 7  # today IS Friday -> use last week's Friday
+    last_friday = ref - timedelta(days=days_since_friday)
+    return last_friday.strftime("%Y-%m-%d")
+
+
 def build_diagnostic_message(stats, strategy_mode, is_spy_bullish, target_rsi):
     """Build intelligent diagnostic message based on scan statistics"""
     
@@ -75,14 +98,43 @@ def build_diagnostic_message(stats, strategy_mode, is_spy_bullish, target_rsi):
     
     return msg
 
-def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, stop_loss_pct=3.0, take_profit_pct=6.0):
+def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, stop_loss_pct=3.0, take_profit_pct=6.0, as_of_date=None):
     """
     Generator that scans the defined universe for trading setups.
+
+    Args:
+        as_of_date: optional "YYYY-MM-DD" string. When provided, the scan is
+            evaluated AS IF run on the close of that trading day - every
+            candle strictly after it is discarded (both for SPY and for
+            every ticker) before computing RSI/SMA/etc. This powers the
+            "Catch-Up Scan" (a forgotten weekly scan run retroactively on
+            last Friday's close), preventing today's PARTIAL live candle
+            from silently overwriting/erasing the signal that was actually
+            available at the close being targeted.
+            When None (default), behaves exactly as before (uses whatever
+            is the latest available candle - today's live/partial one).
+
     Yields: dict with progress and message, and finally the top setups.
     """
     results = []
     total = len(UNIVERSE)
-    
+
+    as_of_ts = None
+    if as_of_date:
+        import pandas as pd
+        as_of_ts = pd.Timestamp(as_of_date)
+
+    def _fetch(ticker, days):
+        """Downloads history, extending the window and truncating to
+        as_of_ts when a retroactive cutoff is requested."""
+        if as_of_ts is None:
+            return stock_api.get_historical_data(ticker, days=days)
+        extra_days = max(0, (datetime.now() - as_of_ts.to_pydatetime()).days)
+        df = stock_api.get_historical_data(ticker, days=days + extra_days)
+        if df is None or df.empty:
+            return df
+        return df[df.index <= as_of_ts]
+
     # Initialize diagnostic statistics
     stats = {
         "total_tickers": len(UNIVERSE),
@@ -100,7 +152,7 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
     # Global Trend Filter: SPY above its SMA 200
     is_spy_bullish = True
     try:
-        spy_df = stock_api.get_historical_data("SPY", days=300)
+        spy_df = _fetch("SPY", days=300)
         if spy_df is not None and len(spy_df) >= 200:
             spy_df['SMA_200'] = spy_df['Close'].rolling(window=200).mean()
             spy_close = float(spy_df['Close'].iloc[-1])
@@ -117,12 +169,15 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
     except Exception as e:
         yield {"progress": 0, "message": f"Error checking SPY trend: {str(e)}. Proceeding anyway."}
 
+    if as_of_ts is not None:
+        yield {"progress": 0, "message": f"Catch-Up Scan: evaluating as of the close of {as_of_date} (later candles ignored)..."}
+
     for index, ticker in enumerate(UNIVERSE):
         progress = (index + 1) / total * 100
         
         try:
             # We download 365 days of history to compute the 52-week high accurately for momentum
-            df = stock_api.get_historical_data(ticker, days=365)
+            df = _fetch(ticker, days=365)
             if df is None or len(df) < 20:
                 stats["download_failed"] += 1
                 yield {"progress": progress, "message": f"Failed to download {ticker}: Rate Limited"}
@@ -192,7 +247,11 @@ def scan_universe_generator(strategy_mode="mean_reversion", target_rsi=30.0, sto
                     rank_score = dist_pct / current_vol if current_vol > 0 else 0.0
                 
         if passed_rules:
-            # Earnings Filter (7-day gap protection)
+            # Earnings Filter (7-day gap protection).
+            # NOTE: intentionally compares against datetime.now(), not
+            # as_of_date. For a Catch-Up Scan run a day or two late this is
+            # negligible; for an old retroactive as_of_date it could miss an
+            # earnings date that has since passed. Documented limitation.
             next_earnings = stock_api.get_next_earnings_date(ticker)
             if next_earnings:
                 # Ensure next_earnings is a datetime object (sometimes it's a date)

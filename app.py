@@ -2,7 +2,7 @@ from flask import Flask, redirect, url_for, jsonify, render_template_string, req
 import subprocess
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import data_manager
 import ui_generator
@@ -102,6 +102,131 @@ def run_scan():
     default_fee = currency_manager.get_default_deposit_fee()
     today_str = datetime.now().strftime('%Y-%m-%d')
     return render_template_string(DEPOSIT_FORM_HTML, default_deposit_fee=default_fee, today=today_str)
+
+
+CATCH_UP_SCAN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Catch-Up Scan - Progress</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #ffffff; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl bg-[#141414] border border-[#262626] rounded-2xl p-8 shadow-2xl">
+        <h2 class="text-2xl font-extrabold mb-2 text-center text-white">Catch-Up Scan</h2>
+        <p class="text-gray-400 text-sm text-center mb-6">
+            Re-running last Friday's ({{ as_of_date }}) close - the regular Sunday-evening
+            scan was missed. Today's live/partial candle is ignored so the signal isn't lost.
+        </p>
+
+        <div class="mb-6">
+            <div class="flex justify-between text-sm font-semibold mb-2">
+                <span id="status-text" class="text-gray-300">Initializing...</span>
+                <span id="progress-text" class="text-[#e67e22]">0%</span>
+            </div>
+            <div class="w-full bg-[#1a1a1a] rounded-full h-4 border border-[#333]">
+                <div id="progress-bar" class="bg-gradient-to-r from-[#e67e22] to-[#f39c12] h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="mb-6">
+            <h3 class="text-sm font-bold text-gray-400 mb-2 uppercase tracking-wider">Live Activity Log</h3>
+            <div id="activity-log" class="w-full h-64 bg-black border border-[#262626] rounded-xl p-4 font-mono text-xs overflow-y-auto text-green-400 flex flex-col gap-1">
+                <div class="text-gray-500">[System] Ready to start catch-up scan...</div>
+            </div>
+        </div>
+
+        <div class="flex justify-center">
+            <button id="done-btn" class="bg-[#e67e22] hover:bg-[#f39c12] text-white font-bold py-3 px-8 rounded-xl transition duration-300 opacity-50 cursor-not-allowed" disabled onclick="window.location.href='/'">
+                Waiting for completion...
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const logBox = document.getElementById('activity-log');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const statusText = document.getElementById('status-text');
+        const doneBtn = document.getElementById('done-btn');
+
+        function appendLog(message) {
+            const div = document.createElement('div');
+            let colorClass = 'text-green-400';
+            if (message.includes('Failed') || message.includes('Error')) {
+                colorClass = 'text-red-400';
+            } else if (message.includes('Skipped') || message.includes('Skipping')) {
+                colorClass = 'text-yellow-500';
+            } else if (message.includes('Found setup')) {
+                colorClass = 'text-cyan-400 font-bold';
+            } else if (message.includes('[System]')) {
+                colorClass = 'text-gray-500';
+            }
+            div.className = colorClass;
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        const eventSource = new EventSource('/api/catch-up-scan-stream?as_of_date={{ as_of_date }}&target_rsi={{ target_rsi }}&stop_loss_pct={{ stop_loss_pct }}&take_profit_pct={{ take_profit_pct }}');
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            if (data.progress !== undefined) {
+                const pct = Math.round(data.progress);
+                progressBar.style.width = pct + '%';
+                progressText.innerText = pct + '%';
+            }
+
+            if (data.message) {
+                appendLog(data.message);
+                statusText.innerText = data.message;
+            }
+
+            if (data.complete) {
+                appendLog('[System] Catch-Up Scan completed successfully!');
+                statusText.innerText = 'Catch-Up Scan Complete!';
+                doneBtn.innerText = 'View Dashboard';
+                doneBtn.className = 'bg-green-500 hover:bg-green-400 text-white font-bold py-3 px-8 rounded-xl transition duration-300 cursor-pointer';
+                doneBtn.disabled = false;
+                eventSource.close();
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            appendLog('Error: Connection to catch-up scan stream lost.');
+            statusText.innerText = 'Connection Error';
+            eventSource.close();
+        };
+    </script>
+</body>
+</html>
+"""
+
+
+@app.route('/catch-up-scan')
+def catch_up_scan():
+    """
+    Entry point for the "I forgot to scan" button: renders the progress page
+    that streams /api/catch-up-scan-stream, defaulting to last Friday's close.
+    """
+    import scanner
+    as_of_date = request.args.get('as_of_date') or scanner.get_last_completed_friday()
+    target_rsi = request.args.get('target_rsi', 55.0)
+    stop_loss_pct = request.args.get('stop_loss_pct', 5.0)
+    take_profit_pct = request.args.get('take_profit_pct', 10.0)
+    return render_template_string(
+        CATCH_UP_SCAN_HTML,
+        as_of_date=as_of_date,
+        target_rsi=target_rsi,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct
+    )
 
 def _sync_deposits_metadata():
     """
@@ -337,6 +462,113 @@ def scan_stream():
         
     return Response(generate(), mimetype='text/event-stream')
 
+
+@app.route('/api/catch-up-scan-stream')
+def catch_up_scan_stream():
+    """
+    "Catch-Up Scan" - runs the weekly scan RETROACTIVELY, evaluated as of the
+    close of last Friday, for the case where the user forgot to run the
+    regular Sunday-evening scan (or only ran a dry-run) and is now catching
+    up before Monday's market open.
+
+    Unlike the regular /api/scan-stream, this endpoint:
+      * Truncates every ticker's price history to the target Friday's close,
+        so today's live/partial candle cannot silently overwrite the signal
+        that was actually available at that close (see scanner.get_last_completed_friday
+        and scan_universe_generator's as_of_date parameter).
+      * Backdates the new orders' signal_dt to the Sunday evening right after
+        that Friday, so the GTC limit order resolves into the entry session
+        that actually already happened (this Monday) instead of a future one.
+      * Immediately runs check_pending_entries() afterwards, so any order
+        whose limit was already touched during the session(s) since is
+        resolved into ACTIVE/PENDING right away instead of waiting for the
+        next auto-refresh.
+      * Takes a timestamped safety backup of trades_db.json before writing,
+        exactly like the retroactive audit tool.
+    """
+    from flask import Response, request
+    import scanner
+    import trading_logic
+    import data_manager
+    import analytics_generator
+
+    as_of_date = request.args.get('as_of_date') or scanner.get_last_completed_friday()
+    target_rsi = float(request.args.get('target_rsi', 55.0))
+    stop_loss_pct = float(request.args.get('stop_loss_pct', 5.0))
+    take_profit_pct = float(request.args.get('take_profit_pct', 10.0))
+    strategy_mode = 'momentum'  # Fixed to momentum strategy
+
+    def generate():
+        # Safety backup before any write, same convention as the audit tool.
+        backup_path = data_manager._create_pre_restore_backup(data_manager.DB_FILE, "trades_db.pre_catchup_")
+        if backup_path:
+            yield f"data: {json.dumps({'progress': 0, 'message': f'[System] Safety backup created: {backup_path}'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'progress': 0, 'message': '[System] No changes since last backup - skipped duplicate backup.'})}\n\n"
+
+        db = data_manager.load_db()
+        trades = db["trades"]
+        metadata = db["portfolio_metadata"]
+
+        total_deposits = metadata.get("total_deposits", 0)
+        commission_per_trade = metadata.get("commission_per_trade", 2.5)
+
+        portfolio_state = analytics_generator.calculate_portfolio_state(trades, total_deposits, commission_per_trade)
+        active_count = len([t for t in trades if trading_logic.holds_slot(t)])
+        pos_size = analytics_generator.calculate_position_size(portfolio_state, max_positions=3, active_positions=active_count)
+
+        if pos_size <= 0:
+            yield f"data: {json.dumps({'progress': 0, 'message': 'No cash available for new positions. Close existing trades first.'})}\n\n"
+            yield f"data: {json.dumps({'progress': 100, 'complete': True})}\n\n"
+            return
+
+        top_setups = []
+        for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct, as_of_date=as_of_date):
+            if "top_setups" in event:
+                top_setups = event["top_setups"]
+            yield f"data: {json.dumps(event)}\n\n"
+
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Adding new trades (filling empty slots)...'})}\n\n"
+
+        cash_available = portfolio_state['cash_available']
+
+        # Backdate the signal to the Sunday evening right after the target
+        # Friday, so the GTC order resolves into the entry session that
+        # actually already happened (this Monday), not a future one.
+        as_of_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+        signal_dt = as_of_dt + timedelta(days=2, hours=21)  # Friday -> Sunday 21:00
+
+        trades, added = trading_logic.add_new_trades(
+            trades, top_setups, position_size_usd=pos_size,
+            commission_per_trade=commission_per_trade, cash_available=cash_available,
+            stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
+            signal_dt=signal_dt, scan_as_of=as_of_date
+        )
+        data_manager.save_trades(trades)
+
+        yield f"data: {json.dumps({'progress': 100, 'message': 'Checking whether any new limit orders already filled...'})}\n\n"
+
+        # Immediately resolve pending entries against real intraday data,
+        # instead of waiting for the next 15-minute auto-refresh cycle.
+        trades = data_manager.load_trades()
+        trades = trading_logic.check_pending_entries(trades)
+        trades = trading_logic.update_portfolio_status(trades)
+        data_manager.save_trades(trades)
+        data_manager.update_portfolio_state(trades)
+        ui_generator.generate_dashboard_file(trades)
+
+        filled = [t['ticker'] for t in trades if trading_logic.is_open_position(t) and t.get('scan_as_of') == as_of_date]
+        still_pending = [t['ticker'] for t in trades if trading_logic.is_pending_entry(t) and t.get('scan_as_of') == as_of_date]
+        summary = f"Catch-Up Scan complete (as of {as_of_date} close). "
+        if filled:
+            summary += f"Filled/active: {', '.join(filled)}. "
+        if still_pending:
+            summary += f"Still pending (limit not touched yet): {', '.join(still_pending)}."
+        yield f"data: {json.dumps({'progress': 100, 'message': summary, 'complete': True})}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
+
+
 @app.route('/api/close-trade', methods=['POST'])
 def api_close_trade():
     """
@@ -494,10 +726,11 @@ def dry_run_stream():
         yield f"data: {json.dumps({'progress': 0, 'message': f'Active Positions: {active_count}/3 | Scanning for {slots_available} new setups...', 'active_positions': active_count, 'slots_available': slots_available})}\n\n"
         
         for event in scanner.scan_universe_generator(strategy_mode, target_rsi, stop_loss_pct, take_profit_pct):
-            # Limit top_setups to available slots
-            if "top_setups" in event and "complete" in event:
-                # Only limit when scan is complete
-                event["top_setups"] = event["top_setups"][:slots_available]
+            # Dry run is a diagnostic tool - it must NEVER hide setups that
+            # actually passed the strategy rules. Slot availability is attached
+            # as metadata so the UI can mark which setups would really be
+            # opened, instead of silently dropping the rest.
+            if "complete" in event:
                 event["active_positions"] = active_count
                 event["slots_available"] = slots_available
             yield f"data: {json.dumps(event)}\n\n"

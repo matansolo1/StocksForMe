@@ -134,6 +134,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <button onclick="openDryRunModal()" class="btn btn-secondary" style="border-color: #39FF14; color: #39FF14; background: transparent;">Dry Run Scanner</button>
             <a href="/under-the-hood" class="btn btn-secondary" style="border-color: #2196F3; color: #2196F3;">Under the Hood</a>
             <a href="/run-scan" class="btn btn-primary">Run Weekly Scan</a>
+            <button onclick="openCatchUpScanModal()" class="btn btn-secondary" style="border-color: #e67e22; color: #e67e22; background: transparent;">🕐 Catch-Up Scan</button>
             <a href="/refresh-tracker" class="btn btn-secondary">Refresh Prices</a>
         </div>
     </div>
@@ -759,6 +760,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const firstRow = document.querySelector('.stock-row');
         if (firstRow) firstRow.click();
 
+        // Catch-Up Scan ("I forgot to scan") - runs the weekly scan
+        // retroactively, evaluated as of last Friday's close, for the case
+        // where the regular Sunday-evening scan was missed (or only a dry
+        // run was done). Resolves last Friday's date on the client and
+        // asks for a clear confirmation before writing anything, then
+        // redirects straight to the progress page - no manual form.
+        function getLastCompletedFridayLabel() {
+            const now = new Date();
+            const dayOfWeek = now.getDay(); // Sunday = 0 ... Friday = 5
+            let daysSinceFriday = (dayOfWeek - 5 + 7) % 7;
+            if (daysSinceFriday === 0) daysSinceFriday = 7; // today IS Friday -> last week's Friday
+            const lastFriday = new Date(now);
+            lastFriday.setDate(now.getDate() - daysSinceFriday);
+            const y = lastFriday.getFullYear();
+            const m = (lastFriday.getMonth() + 1).toString().padStart(2, '0');
+            const d = lastFriday.getDate().toString().padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        window.openCatchUpScanModal = function() {
+            const asOfDate = getLastCompletedFridayLabel();
+            const confirmed = confirm(
+                `Catch-Up Scan\n\n` +
+                `This will run the weekly scan as of last Friday's close (${asOfDate}), ` +
+                `ignoring today's live/partial candle, and place any new GTC limit orders found ` +
+                `(backdated to the Sunday session right after). Existing positions are untouched, ` +
+                `and a safety backup of the trade database is created automatically first.\n\n` +
+                `Continue?`
+            );
+            if (confirmed) {
+                window.location.href = `/catch-up-scan?as_of_date=${asOfDate}`;
+            }
+        };
+
         // Dry Run Scanner Logic
         let dryRunEventSource = null;
 
@@ -958,13 +993,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     
                     const tableBody = document.getElementById('dryRunResultsTableBody');
                     tableBody.innerHTML = '';
+
+                    const setups = data.top_setups || [];
+                    const activePositions = data.active_positions ?? 0;
+                    const slotsAvailable = data.slots_available ?? 0;
+
+                    const summaryEl = document.getElementById('dryRunSlotsSummary');
+                    const bannerEl = document.getElementById('dryRunSlotsBanner');
+                    summaryEl.innerText = `Occupied slots (open + pending): ${activePositions}/3 · Available: ${slotsAvailable} · Setups found: ${setups.length}`;
                     
-                    if (data.top_setups && data.top_setups.length > 0) {
-                        data.top_setups.forEach(s => {
+                    if (setups.length > 0) {
+                        setups.forEach((s, index) => {
+                            const hasSlot = index < slotsAvailable;
                             const tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid #262626';
+                            if (!hasSlot) tr.style.opacity = '0.45';
+                            const noSlotTag = hasSlot ? '' : '<span style="color:#e67e22; font-size:0.7rem; border:1px solid #e67e22; border-radius:4px; padding:1px 5px; margin-right:6px;">No slot</span>';
                             tr.innerHTML = `
-                                <td style="padding: 8px;"><strong>${s.Ticker}</strong></td>
+                                <td style="padding: 8px;">${noSlotTag}<strong>${s.Ticker}</strong></td>
                                 <td style="padding: 8px;">$${s.Close.toFixed(2)}</td>
                                 <td style="padding: 8px; color: #ff5252;">$${s.StopLoss.toFixed(2)}</td>
                                 <td style="padding: 8px; color: #39FF14;">$${s.TakeProfit.toFixed(2)}</td>
@@ -973,8 +1019,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             `;
                             tableBody.appendChild(tr);
                         });
+
+                        if (slotsAvailable === 0) {
+                            bannerEl.innerText = `\u26A0\uFE0F All 3 slots are occupied by open positions and pending limit orders. These setups passed the strategy rules but would not be opened right now.`;
+                            bannerEl.style.display = 'block';
+                        } else {
+                            bannerEl.style.display = 'none';
+                        }
                     } else {
                         tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 15px; color: #aaa;">No setups found passing the strategy rules.</td></tr>';
+                        bannerEl.style.display = 'none';
                     }
 
                     document.getElementById('dryRunResultsSection').style.display = 'block';
@@ -1521,6 +1575,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <!-- Results Section -->
             <div id="dryRunResultsSection" style="display: none; margin-top: 20px;">
                 <h3 style="color: white; border-bottom: 1px solid #262626; padding-bottom: 8px; margin-bottom: 15px;">Top Scan Results</h3>
+                <div id="dryRunSlotsSummary" style="color: #a0a0a0; font-size: 0.8rem; margin-bottom: 10px;"></div>
+                <div id="dryRunSlotsBanner" style="display: none; background: rgba(230,126,34,0.12); border: 1px solid #e67e22; color: #e67e22; font-size: 0.8rem; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px;"></div>
                 <div style="overflow-x: auto;">
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
